@@ -18,6 +18,9 @@ export class GoblinDie {
   public readonly id: string;
   public rarity: Rarity;
   public faces: DieFace[];
+  /** Id del blueprint di catalogo, se il dado proviene dal pool
+   *  sbloccabile (usato da shop e salvataggi). */
+  public blueprintId?: string;
 
   constructor(
     rarity: Rarity,
