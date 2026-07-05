@@ -18,22 +18,46 @@ describe('RunManager — struttura ad Atti (MVP §1)', () => {
     expect(run.level).toBe(0);
     run.state.act = 2;
     run.state.encounter = 1;
-    expect(run.level).toBe(ENCOUNTERS_PER_ACT); // 11
+    expect(run.level).toBe(ENCOUNTERS_PER_ACT); // 10
     run.state.act = 3;
-    run.state.encounter = 11;
-    expect(run.level).toBe(32);
+    run.state.encounter = 10;
+    expect(run.level).toBe(29);
   });
 
-  it("l'undicesimo incontro è il boss e chiude l'Atto", () => {
+  it("boss fight ogni 5: il 5° è il Campione (non chiude l'Atto), il 10° il Boss", () => {
     const run = new RunManager();
-    for (let i = 0; i < ENCOUNTERS_PER_ACT - 1; i++) {
-      expect(run.isBoss).toBe(false);
+    // Incontri 1-4: normali
+    for (let i = 1; i <= 4; i++) {
+      expect(run.isBossFight).toBe(false);
       expect(run.advance()).toBe('next-encounter');
     }
-    expect(run.isBoss).toBe(true);
+    // 5° incontro: Campione
+    expect(run.isBossFight).toBe(true);
+    expect(run.isChampion).toBe(true);
+    expect(run.isActBoss).toBe(false);
+    expect(run.advance()).toBe('next-encounter'); // l'Atto continua
+    expect(run.state.act).toBe(1);
+    // Incontri 6-9: normali
+    for (let i = 6; i <= 9; i++) {
+      expect(run.isBossFight).toBe(false);
+      run.advance();
+    }
+    // 10° incontro: Boss d'Atto
+    expect(run.isActBoss).toBe(true);
+    expect(run.isChampion).toBe(false);
     expect(run.advance()).toBe('act-completed');
     expect(run.state.act).toBe(2);
     expect(run.state.encounter).toBe(1);
+  });
+
+  it('Campione paga x2 e Boss x3 rispetto a un incontro normale', () => {
+    const at = (encounter: number) =>
+      new RunManager({ act: 1, encounter, gold: new Decimal(0), purchases: 0 });
+    // Normalizzo per la crescita 1.5^level per isolare i moltiplicatori
+    const norm = (enc: number) =>
+      at(enc).goldReward().div(new Decimal(1.5).pow(enc - 1)).toNumber();
+    expect(norm(5) / norm(4)).toBeCloseTo(2, 6); // Campione
+    expect(norm(10) / norm(9)).toBeCloseTo(3, 6); // Boss d'Atto
   });
 
   it('il terzo boss completa la run', () => {
@@ -43,9 +67,9 @@ describe('RunManager — struttura ad Atti (MVP §1)', () => {
 
   it("la ricompensa cresce di 1.5^level (stessa curva dei costi shop)", () => {
     const runA = new RunManager();
-    const runB = new RunManager({ act: 1, encounter: 5, gold: new Decimal(0), purchases: 0 });
+    const runB = new RunManager({ act: 1, encounter: 4, gold: new Decimal(0), purchases: 0 });
     const ratio = runB.goldReward().div(runA.goldReward()).toNumber();
-    expect(ratio).toBeCloseTo(1.5 ** 4, 6);
+    expect(ratio).toBeCloseTo(1.5 ** 3, 6);
   });
 
   it('spendGold rifiuta senza addebitare se l\'oro non basta', () => {
@@ -93,6 +117,23 @@ describe('Shop — economia su curva esponenziale (GDD §4.2)', () => {
     const notOffered = shop.generateOffers(0, 0, withDie, [golden]);
     expect(offered.some(o => o.blueprintId === golden.id)).toBe(true);
     expect(notOffered.some(o => o.blueprintId === golden.id)).toBe(false);
+  });
+
+  it('Mercante Reale: sconto 30% e offerta premium esclusiva', () => {
+    const shop = new Shop(seededRNG(1));
+    const bag = [new GoblinDie(Rarity.COMUNE, undefined, seededRNG(1))];
+    const normal = shop.generateOffers(0, 0, bag, []);
+    const special = shop.generateOffers(0, 0, bag, [], true);
+
+    // L'offerta premium compare solo in modalità speciale
+    expect(normal.some(o => o.id === 'offer-str-major')).toBe(false);
+    expect(special.some(o => o.id === 'offer-str-major')).toBe(true);
+
+    // Stessa offerta base, prezzo scontato del 30%
+    const normStr = normal.find(o => o.id === 'offer-str')!;
+    const specStr = special.find(o => o.id === 'offer-str')!;
+    expect(specStr.cost.lt(normStr.cost)).toBe(true);
+    expect(specStr.cost.toNumber()).toBe(Math.floor(normStr.cost.toNumber() * 0.7));
   });
 
   it('stat-str compone il 30%: due acquisti = ×1.69', () => {

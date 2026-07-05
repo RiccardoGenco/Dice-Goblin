@@ -7,7 +7,7 @@
   import {
     playerView, enemyView, intentView, battleState, rolledChips,
     overflowActive, uiMode, battleResult, logLines, equipVersion,
-    uiPhase, goldView, runLabel, shopOffers, rewardBanner
+    uiPhase, goldView, runLabel, shopOffers, shopSpecial, rewardBanner
   } from './stores';
 
   let canvas: HTMLCanvasElement;
@@ -162,8 +162,9 @@
   <!-- ===== Overlay Shop (tra un incontro e l'altro) ===== -->
   {#if $uiPhase === 'shop'}
     <div class="overlay">
-      <div class="overlay-box shop-box">
-        <h2>🛒 Il Mercante Goblin</h2>
+      <div class="overlay-box shop-box" class:royal={$shopSpecial}>
+        <h2>{$shopSpecial ? '👑 Il Mercante Reale' : '🛒 Il Mercante Goblin'}</h2>
+        {#if $shopSpecial}<p class="unlock">Prezzi scontati del 30% — bottino da boss fight!</p>{/if}
         {#if $rewardBanner}<p class="unlock">{$rewardBanner}</p>{/if}
         <p class="gold">💰 {$goldView} oro</p>
         <div class="offers">
@@ -306,4 +307,5 @@
   .offer .cost { grid-row: span 2; color: #ffd84c; font-size: 12px; }
   .offer:disabled { opacity: 0.4; cursor: default; }
   .cost.too-expensive { color: #ff5c5c; }
+  .shop-box.royal { border-color: #ffd84c; box-shadow: 0 0 24px rgba(255, 216, 76, 0.25); }
 </style>

@@ -10,11 +10,16 @@ import { BALANCE } from './types';
  * l'esponenzialità sta nelle curve, non nel contatore.
  * ============================================================ */
 
-export const ENCOUNTERS_PER_ACT = 11; // 10 incontri + 1 boss
+export const ENCOUNTERS_PER_ACT = 10;
+/** Una boss fight ogni 5 incontri: il 5° è il Campione (mid-boss),
+ *  il 10° è il Boss d'Atto. */
+export const BOSS_INTERVAL = 5;
 export const TOTAL_ACTS = 3;
 export const GOLD_REWARD_BASE = 10;
+export const CHAMPION_GOLD_MULTIPLIER = 2;
 export const BOSS_GOLD_MULTIPLIER = 3;
-/** I boss hanno statistiche amplificate rispetto all'incontro base */
+/** Amplificazione delle stat nemiche nelle boss fight */
+export const CHAMPION_STAT_MULTIPLIER = 1.8;
 export const BOSS_STAT_MULTIPLIER = 2.5;
 
 export interface RunState {
@@ -39,23 +44,42 @@ export class RunManager {
     return (this.state.act - 1) * ENCOUNTERS_PER_ACT + (this.state.encounter - 1);
   }
 
-  public get isBoss(): boolean {
+  /** True su OGNI boss fight (incontri multipli di 5: Campione e Boss) */
+  public get isBossFight(): boolean {
+    return this.state.encounter % BOSS_INTERVAL === 0;
+  }
+
+  /** Il Boss d'Atto: 10° incontro, chiude l'Atto e sblocca il dado */
+  public get isActBoss(): boolean {
     return this.state.encounter === ENCOUNTERS_PER_ACT;
   }
 
+  /** Il Campione: mid-boss del 5° incontro. Non chiude l'Atto,
+   *  ma premia con l'intermezzo speciale. */
+  public get isChampion(): boolean {
+    return this.isBossFight && !this.isActBoss;
+  }
+
   public get label(): string {
-    const enc = this.isBoss ? '👑 BOSS' : `${this.state.encounter}/10`;
+    const enc = this.isActBoss
+      ? '👑 BOSS'
+      : this.isChampion
+        ? '🏆 CAMPIONE'
+        : `${this.state.encounter}/10`;
     return `Atto ${this.state.act} — ${enc}`;
   }
 
   /** Ricompensa in oro della vittoria.
    *  SCALING: cresce di 1.5^level, la STESSA base dei costi shop
-   *  (GDD §4.2): il potere d'acquisto resta costante lungo la run,
-   *  niente inflazione né stalli. I boss pagano triplo. */
+   *  (GDD §4.2): il potere d'acquisto resta costante lungo la run.
+   *  Le boss fight sono i picchi economici: Campione x2, Boss x3
+   *  — in sincrono con lo sconto del Mercante Reale. */
   public goldReward(): Decimal {
     const growth = new Decimal(BALANCE.SHOP_COST_GROWTH).pow(this.level);
     const base = new Decimal(GOLD_REWARD_BASE).times(growth);
-    return this.isBoss ? base.times(BOSS_GOLD_MULTIPLIER) : base;
+    if (this.isActBoss) return base.times(BOSS_GOLD_MULTIPLIER);
+    if (this.isChampion) return base.times(CHAMPION_GOLD_MULTIPLIER);
+    return base;
   }
 
   public addGold(amount: Decimal): void {
@@ -70,10 +94,11 @@ export class RunManager {
     return true;
   }
 
-  /** Avanza dopo una vittoria. Se l'incontro era il boss, chiude
-   *  l'Atto (o l'intera run al terzo boss). */
+  /** Avanza dopo una vittoria. Solo il Boss d'Atto (10°) chiude
+   *  l'Atto (o l'intera run al terzo); il Campione (5°) prosegue
+   *  normalmente al 6° incontro. */
   public advance(): AdvanceResult {
-    if (this.isBoss) {
+    if (this.isActBoss) {
       if (this.state.act >= TOTAL_ACTS) return 'run-completed';
       this.state.act++;
       this.state.encounter = 1;

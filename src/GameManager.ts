@@ -15,7 +15,7 @@ import {
   SkillId
 } from '@core/types';
 import { DiceWorld } from '@graphics/DiceWorld';
-import { RunManager, BOSS_STAT_MULTIPLIER, freshRunState } from '@core/RunManager';
+import { RunManager, BOSS_STAT_MULTIPLIER, CHAMPION_STAT_MULTIPLIER, freshRunState } from '@core/RunManager';
 import { Shop, ShopOffer } from '@core/Shop';
 import { SaveManager } from '@core/SaveManager';
 import { UNLOCKABLE_DICE, UNLOCK_BY_ACT, getBlueprint } from '@core/diceCatalog';
@@ -34,6 +34,7 @@ import {
   goldView,
   runLabel,
   shopOffers,
+  shopSpecial,
   rewardBanner,
   pushLog,
   CombatantView,
@@ -149,9 +150,13 @@ export class GameManager {
     /* SCALING ESPONENZIALE DELLA DIFFICOLTÀ (GDD §4.2):
        HP = vit*10 e vit_nemica = base * 1.6^level
        → gli HP nemici seguono esattamente HPbase * 1.6^level.
-       I boss (11° incontro) amplificano le stat di ×2.5. */
+       Boss fight ogni 5 incontri: Campione (5°) x1.8, Boss (10°) x2.5. */
     const growth = new Decimal(BALANCE.ENEMY_HP_GROWTH).pow(level);
-    const bossMult = this.run.isBoss ? BOSS_STAT_MULTIPLIER : 1;
+    const bossMult = this.run.isActBoss
+      ? BOSS_STAT_MULTIPLIER
+      : this.run.isChampion
+        ? CHAMPION_STAT_MULTIPLIER
+        : 1;
     const enemyStats: CombatantStats = {
       str: new Decimal(3).times(growth).times(bossMult),
       int: new Decimal(1).times(growth).times(bossMult),
@@ -163,9 +168,11 @@ export class GameManager {
     this.equipment.syncPipeline(this.engine.pipeline);
     this.registerListeners();
     pushLog(
-      this.run.isBoss
+      this.run.isActBoss
         ? `— 👑 ${this.run.label}: il BOSS sbarra la strada! —`
-        : `— ${this.run.label}: un Avventuriero si avvicina —`
+        : this.run.isChampion
+          ? `— 🏆 ${this.run.label}: il Campione ti sfida! —`
+          : `— ${this.run.label}: un Avventuriero si avvicina —`
     );
   }
 
@@ -252,6 +259,9 @@ export class GameManager {
     this.run.addGold(reward);
     pushLog(`💰 Bottino: ${formatBigNumber(reward)} oro`);
 
+    // Le boss fight (Campione e Boss d'Atto) aprono l'intermezzo
+    // SPECIALE: Mercante Reale (sconto + offerta premium)
+    const wasBossFight = this.run.isBossFight;
     const beatenAct = this.run.state.act;
     const result = this.run.advance();
 
@@ -277,7 +287,7 @@ export class GameManager {
     }
 
     this.autosave();
-    this.openShop();
+    this.openShop(wasBossFight);
   }
 
   private toChip(face: DieFace): DieChip {
@@ -361,14 +371,16 @@ export class GameManager {
 
   /* ---------------- Shop e persistenza ---------------- */
 
-  private openShop(): void {
+  private openShop(special: boolean): void {
     const available = UNLOCKABLE_DICE.filter(bp => this.unlocks.includes(bp.id));
     this.currentOffers = this.shop.generateOffers(
       this.run.level,
       this.run.state.purchases,
       this.bag,
-      available
+      available,
+      special
     );
+    shopSpecial.set(special);
     this.publishOffers();
     this.refreshRunHeader();
     uiPhase.set('shop');

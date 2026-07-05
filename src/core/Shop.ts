@@ -15,8 +15,15 @@ import { DieBlueprint, createDieFromBlueprint } from './diceCatalog';
  * ============================================================ */
 
 export const PURCHASE_INFLATION = 1.25;
+/** Sconto del Mercante Reale (dopo le boss fight): prezzi x0.7 */
+export const SPECIAL_DISCOUNT = 0.7;
 
-export type OfferKind = 'stat-str' | 'stat-vit' | 'upgrade-face' | 'new-die';
+export type OfferKind =
+  | 'stat-str'
+  | 'stat-str-major' // esclusiva del Mercante Reale
+  | 'stat-vit'
+  | 'upgrade-face'
+  | 'new-die';
 
 export interface ShopOffer {
   id: string;
@@ -34,6 +41,7 @@ export interface ShopOffer {
 
 const BASE_COST: Record<OfferKind, number> = {
   'stat-str': 25,
+  'stat-str-major': 60,
   'stat-vit': 20,
   'upgrade-face': 30,
   'new-die': 80
@@ -42,21 +50,41 @@ const BASE_COST: Record<OfferKind, number> = {
 export class Shop {
   constructor(private readonly rng: RNG = defaultRNG) {}
 
-  private cost(kind: OfferKind, level: number, purchases: number): Decimal {
-    return scaleShopCost(new Decimal(BASE_COST[kind]), level)
-      .times(new Decimal(PURCHASE_INFLATION).pow(purchases))
-      .floor();
+  private cost(
+    kind: OfferKind,
+    level: number,
+    purchases: number,
+    special = false
+  ): Decimal {
+    let c = scaleShopCost(new Decimal(BASE_COST[kind]), level)
+      .times(new Decimal(PURCHASE_INFLATION).pow(purchases));
+    // Mercante Reale: il picco d'oro delle boss fight incontra lo sconto
+    if (special) c = c.times(SPECIAL_DISCOUNT);
+    return c.floor();
   }
 
-  /** Genera le 3 offerte della visita: due potenziamenti stat/faccia
-   *  e, se disponibile, un dado del pool sbloccato non ancora in borsa. */
+  /** Genera le offerte della visita. Con special=true (dopo una
+   *  boss fight) applica lo sconto del Mercante Reale e aggiunge
+   *  l'offerta premium esclusiva. */
   public generateOffers(
     level: number,
     purchases: number,
     bag: GoblinDie[],
-    unlockedBlueprints: DieBlueprint[]
+    unlockedBlueprints: DieBlueprint[],
+    special = false
   ): ShopOffer[] {
     const offers: ShopOffer[] = [];
+
+    if (special) {
+      offers.push({
+        id: 'offer-str-major',
+        kind: 'stat-str-major',
+        icon: '💎',
+        label: '+60% Forza',
+        description: 'Offerta premium del Mercante Reale',
+        cost: this.cost('stat-str-major', level, purchases, special)
+      });
+    }
 
     offers.push({
       id: 'offer-str',
@@ -64,7 +92,7 @@ export class Shop {
       icon: '💪',
       label: '+30% Forza',
       description: 'Aumenta la STR base (Fase FLAT della pipeline)',
-      cost: this.cost('stat-str', level, purchases)
+      cost: this.cost('stat-str', level, purchases, special)
     });
 
     offers.push({
@@ -73,7 +101,7 @@ export class Shop {
       icon: '❤️',
       label: '+25% Vitalità',
       description: 'Più HP massimi dalla prossima battaglia',
-      cost: this.cost('stat-vit', level, purchases)
+      cost: this.cost('stat-vit', level, purchases, special)
     });
 
     // Potenziamento di una faccia casuale della borsa
@@ -91,7 +119,7 @@ export class Shop {
         description: isMult
           ? `Faccia ×${face.value.toString()} -> ×${face.value.plus(0.5).toString()}`
           : `Faccia ${face.value.toString()} -> ${face.value.times(1.5).floor().toString()}`,
-        cost: this.cost('upgrade-face', level, purchases),
+        cost: this.cost('upgrade-face', level, purchases, special),
         dieIndex,
         faceIndex
       });
@@ -108,7 +136,7 @@ export class Shop {
         icon: available.icon,
         label: available.name,
         description: available.description,
-        cost: this.cost('new-die', level, purchases),
+        cost: this.cost('new-die', level, purchases, special),
         blueprintId: available.id
       });
     }
@@ -131,6 +159,10 @@ export class Shop {
     switch (offer.kind) {
       case 'stat-str':
         ctx.stats.str = ctx.stats.str.times(1.3);
+        break;
+      case 'stat-str-major':
+        // Premium: x1.6 in un colpo solo (vs 1.3^2 = 1.69 in due acquisti)
+        ctx.stats.str = ctx.stats.str.times(1.6);
         break;
       case 'stat-vit':
         ctx.stats.vit = ctx.stats.vit.times(1.25);

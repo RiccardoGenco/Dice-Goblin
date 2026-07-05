@@ -65,6 +65,8 @@ export const uiPhase = writable<'battle' | 'shop' | 'run-complete'>('battle');
 export const goldView = writable('0');
 export const runLabel = writable('Atto 1 — 1/10');
 export const shopOffers = writable<ShopOfferView[]>([]);
+/** true dopo una boss fight: 👑 Mercante Reale (sconto + premium) */
+export const shopSpecial = writable(false);
 export const rewardBanner = writable<string | null>(null);
 
 export function pushLog(line: string): void {
