@@ -18,8 +18,13 @@ graph TD
     F -->|Incontro normale| G{BIVIO}
     G -->|Porta sinistra| H[SHOP]
     G -->|Porta destra| I[FORGE]
-    F -->|Boss sconfitto| J[ACT_TRANSITION]
-    J --> H2[SHOP + FORGE entrambi]
+    F -->|Campione - incontro 5| S{BIVIO SPECIALE}
+    S -->|Porta sinistra| H3[SHOP SPECIALE]
+    S -->|Porta destra| I3[FORGIA SPECIALE]
+    H3 --> D
+    I3 --> D
+    F -->|Boss d'Atto - incontro 10| J[ACT_TRANSITION]
+    J --> H2[SHOP SPECIALE + FORGIA SPECIALE]
     H --> D
     I --> D
     H2 --> D
@@ -47,6 +52,25 @@ export enum GameFlowState {
 ```
 
 **Regola architetturale**: il `GameFlow` non conosce i dettagli del combattimento; entra in `BATTLE`, attende l'evento `onBattleEnded` del `BattleEngine` e riprende il controllo. Nessuna delle due FSM può saltare stati dell'altra.
+
+---
+
+## 0.bis Struttura della Run: una Boss Fight ogni 5 Incontri
+
+Ogni Atto è composto da **10 incontri** con un climax ogni 5:
+
+```
+Atto:  [1] [2] [3] [4] [🏆5] [6] [7] [8] [9] [👑10]
+                       Campione              Boss d'Atto
+```
+
+| Incontro | Tipo | Stat nemiche | Oro | Dopo la vittoria |
+| :--- | :--- | :--- | :--- | :--- |
+| 1-4, 6-9 | Normale | `base × 1.6^level` | `10 × 1.5^level` | Bivio normale (Shop *o* Forgia) |
+| **5** | **🏆 Campione** (mid-boss) | `× 1.8` | `× 2` | **Bivio speciale** (Shop Speciale *o* Forgia Speciale) |
+| **10** | **👑 Boss d'Atto** | `× 2.5` | `× 3` | `ACT_TRANSITION`: sblocco + cura + **entrambi gli speciali** |
+
+Run completa = 3 Atti × 10 incontri = **30 incontri, 6 boss fight**. Il Campione spezza l'Atto in due archi da 5 e garantisce un picco di ricompensa a metà strada; solo il Boss d'Atto sblocca il dado permanente in Collezione.
 
 ---
 
@@ -122,11 +146,11 @@ Interamente delegata alla FSM del `BattleEngine` (GDD §5), qui riassunta per co
 
 Passaggi:
 
-1. **Oro**: `10 × 1.5^level` (×3 sui boss) — stessa base dei costi shop: potere d'acquisto costante (GDD §4.2).
+1. **Oro**: `10 × 1.5^level` (×2 sul Campione, ×3 sul Boss d'Atto) — stessa base dei costi shop: potere d'acquisto costante (GDD §4.2).
 2. **Avanzamento run**: `run.advance()` → `next-encounter` | `act-completed` | `run-completed`.
-3. **Sblocco permanente** (solo `act-completed`/`run-completed`): il dado dell'Atto entra in Collezione (`SaveManager.addUnlock`), banner celebrativo.
+3. **Sblocco permanente** (solo Boss d'Atto): il dado dell'Atto entra in Collezione (`SaveManager.addUnlock`), banner celebrativo. Il Campione NON sblocca: il suo premio è l'intermezzo speciale.
 4. **Autosave**.
-5. Routing: incontro normale → `INTERMISSION` (bivio); boss → `ACT_TRANSITION`; terzo boss → `RUN_END` (Victory).
+5. Routing: incontro normale → `INTERMISSION` (bivio normale); **Campione → `INTERMISSION` speciale**; Boss d'Atto → `ACT_TRANSITION`; terzo Boss d'Atto → `RUN_END` (Victory).
 
 ---
 
@@ -144,6 +168,10 @@ Passaggi della fase:
 1. Overlay con le due porte (icona + una riga di anteprima: es. lo shop mostra l'oro disponibile, la forgia il numero di facce potenziabili).
 2. Input: click su una porta → `SHOP` o `FORGE`.
 3. Non c'è "indietro": la porta non scelta si chiude (feedback visivo).
+
+### 7.bis Il Bivio Speciale (dopo il Campione)
+
+Dopo l'incontro 5, le due porte diventano **dorate**: la scelta è tra 👑 *Mercante Reale* e 🔥 *Gran Forgia* — le versioni potenziate delle due fasi (vedi §8.bis e §9.bis). Stessa meccanica del bivio normale (una sola porta), ma con posta più alta: è il premio strutturale del mid-boss.
 
 ---
 
@@ -163,6 +191,19 @@ Passaggi:
 2. Acquisti multipli finché l'oro basta (ogni acquisto: addebito → applica → autosave → rigenera viste).
 3. **⚠️ Cambio rispetto all'MVP attuale**: gli oggetti equip non sono più gratuiti nell'inventario della HUD; si ottengono *solo* qui. L'inventario in battaglia mostra solo gli oggetti posseduti.
 4. Uscita: pulsante "⚔️ Prossimo incontro" → `ENCOUNTER_INTRO`.
+
+### 8.bis SHOP SPECIALE — 👑 Il Mercante Reale (dopo Campione e Boss d'Atto)
+
+La versione potenziata dello shop. Differenze rispetto al Mercante normale:
+
+| Modifica | Dettaglio | Razionale di bilanciamento |
+| :--- | :--- | :--- |
+| 💸 **Sconto 30%** | Tutti i prezzi × 0.7 | Il picco d'oro del boss (×2/×3) + sconto = il momento "spendi tutto" della run |
+| 💎 **Offerta premium** | `+60% Forza` (costo base 60) | Doppio dell'upgrade normale: disponibile SOLO qui, spinge a conservare oro per i boss |
+| 🎲 **Dado garantito** | Se la Collezione ha un dado non in borsa, l'offerta compare sempre | Rimuove la casualità dal premio più importante |
+| 🃏 **4ª offerta extra** | Un oggetto equipaggiamento raro aggiuntivo | Più scelta = più decisioni di build |
+
+Il rincaro `1.25^acquisti` resta attivo anche qui: comprare tanto dal Mercante Reale inasprisce i prezzi futuri di tutta la run.
 
 ---
 
@@ -185,15 +226,25 @@ Passaggi della fase:
 
 **Nota di scaling (dove agisce la Forgia)**: la Tempra su facce NORMAL è crescita *lineare* (Fase FLAT); Trasmutazione e Tempra su MULTIPLIER agiscono sulla Fase MULT, cioè sulla *base dell'esponenziale*. Per questo Trasmutazione costa 3× la Tempra e ha il cap per-dado: è l'operazione più potente del gioco.
 
+### 9.bis FORGIA SPECIALE — 🔥 La Gran Forgia (dopo Campione e Boss d'Atto)
+
+La versione potenziata della Forgia. Differenze:
+
+| Modifica | Dettaglio | Razionale di bilanciamento |
+| :--- | :--- | :--- |
+| ⚒️ **3 operazioni** | Invece delle 2 standard | Il picco di potenziamento della borsa avviene sui boss, in sincrono col picco d'oro |
+| ⚗️ **Trasmutazione -50%** | Costo base 45 invece di 90 | L'operazione più potente diventa accessibile SOLO nei momenti giusti della run |
+| 🌋 **Riforgiatura** (esclusiva) | Rilancia i valori di TUTTE le facce NORMAL di un dado a `valore × 1.25` (floor), costo base 70 | Potenzia la Fase FLAT in blocco: forte ma lineare, non tocca l'esponenziale. Il cap di 3 facce non-NORMAL resta invariato anche qui |
+
 ---
 
 ## 10. Fase ACT_TRANSITION (Chiusura Atto)
 
-Dopo ogni boss sconfitto (Atti 1 e 2):
+Dopo ogni Boss d'Atto sconfitto (Atti 1 e 2):
 
 1. Banner di sblocco del dado dell'Atto (da `REWARD`).
 2. **Cura completa**: HP del Goblin ripristinati (unico heal del gioco: rende i boss un traguardo e giustifica run rischiose).
-3. **Doppio intermezzo**: si visitano **entrambe** Shop e Forgia, in quest'ordine, ciascuna con le sue regole normali.
+3. **Doppio intermezzo speciale**: si visitano **entrambe** 👑 Mercante Reale e 🔥 Gran Forgia, in quest'ordine, ciascuna con le regole speciali di §8.bis e §9.bis. È il momento di massimo potenziamento della run.
 4. Autosave → `ENCOUNTER_INTRO` (Atto successivo, incontro 1).
 
 ---
