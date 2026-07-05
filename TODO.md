@@ -1,0 +1,72 @@
+# Goblin Revenge — Checklist del lavoro rimanente
+
+Stato attuale: MVP giocabile (20 commit, 37 test verdi). Fatto: motore core, pipeline esponenziale, dadi 3D guidati, HUD Svelte, run 3 Atti con Campione/Boss ogni 5 incontri, Shop + Mercante Reale, salvataggio e sblocchi permanenti.
+
+Legenda: 🔴 gameplay core mancante · 🟡 meta/UX · 🟢 polish · 🔵 tecnico
+
+---
+
+## 🔴 Gameplay core (bloccanti per il flusso completo delle specs)
+
+- [ ] **Forgia dei Dadi** (`src/core/Forge.ts` + test) — game_flow_specs §9
+  - [ ] Tempra: NORMAL ×1.5 (floor), MULTIPLIER +0.5
+  - [ ] Trasmutazione: cambio tipo faccia, **cap 3 facce non-NORMAL per dado**
+  - [ ] Fusione: sacrifica un dado, un altro eredita la faccia migliore e sale di rarità
+  - [ ] Limite 2 operazioni per visita, anteprima prima/dopo, `redrawFace()` sulle texture
+- [ ] **Gran Forgia** (variante speciale post-boss) — specs §9.bis
+  - [ ] 3 operazioni invece di 2
+  - [ ] Trasmutazione a costo dimezzato (base 45)
+  - [ ] Riforgiatura esclusiva: tutte le facce NORMAL di un dado ×1.25
+- [ ] **Bivio INTERMISSION** (due porte, se ne sceglie una) — specs §7
+  - Oggi la vittoria apre sempre lo shop: manca la scelta Shop/Forgia
+  - [ ] Bivio speciale con porte dorate dopo il Campione — specs §7.bis
+- [ ] **HP persistenti tra gli incontri** — prerequisito della "cura completa"
+  - Oggi ogni battaglia riparte a HP pieni: la tensione roguelike non esiste
+  - [ ] Salvare `hp` corrente in `SavedRun` (v2) e passarlo al `BattleEngine`
+  - [ ] Cura completa SOLO in ACT_TRANSITION (unico heal del gioco) — specs §10
+- [ ] **ACT_TRANSITION completa** — specs §10
+  - Oggi dopo il Boss d'Atto si apre solo il Mercante Reale
+  - [ ] Sequenza: sblocco → cura → Mercante Reale → Gran Forgia → nuovo Atto
+
+## 🟡 Meta e UX (dalle specs, non bloccanti per giocare)
+
+- [ ] **GameFlow.ts**: FSM di alto livello esplicita (oggi il flusso è implicito in GameManager) — specs §0
+- [ ] **MAIN_MENU**: Continua / Nuova Run (con conferma sovrascrittura) / Collezione / Opzioni — specs §2
+- [ ] **Collezione**: pool dadi con sbloccati evidenziati e silhouette dei mancanti
+- [ ] **Dote di partenza**: scelta di 1 dado sbloccato come 6° dado iniziale — specs §3.5
+- [ ] **Oggetti equip a pagamento**: spostarli nello shop (oggi gratuiti nella HUD) — specs §8.3
+  - [ ] Con 5 slot pieni l'acquisto chiede quale oggetto scartare
+- [ ] **RunStats + RECAP**: danno max in un turno, overflow count, oro raccolto/speso, op. di forgia — specs §11
+- [ ] **SavedRun v2**: hp corrente, runStats, contatore forgia (retro-compatibile via campo `version`)
+- [ ] **ENCOUNTER_INTRO**: presentazione nemico skippabile, nomi propri per i boss — specs §4
+- [ ] **Opzioni**: velocità animazioni dadi (×1/×2/istantanea), volume, reset meta con doppia conferma
+
+## 🟢 Polish
+
+- [ ] FX: glow shader per rarità dei dadi, particellari sull'impatto, screen-shake sull'overflow
+- [ ] Fase Glitch UI dell'overflow più ricca (flash, testi vibranti) — GDD §3.3
+- [ ] Audio: SFX lanci/rimbalzi/impatti, musica adattiva (normale vs boss)
+- [ ] Sprite/SVG dei nemici (oggi solo testo) e varianti visive per Campione/Boss
+- [ ] Reroll visivo: rilanciare SOLO i dadi scelti (oggi si rilanciano tutti)
+- [ ] Chip dei lanci ricorsivi extra: feedback visivo dedicato (oggi non hanno dado 3D corrispondente)
+- [ ] Responsive mobile (layout HUD e canvas)
+
+## 🔵 Tecnico e rilascio
+
+- [ ] Bilanciamento: playtest della curva 1.6^lv su 30 incontri (il muro di metà Atto 2 è il punto critico)
+- [ ] Test d'integrazione del flusso completo (vittoria → shop → incontro → boss → sblocco)
+- [ ] Code splitting del bundle (warning Vite: chunk > 500KB, separare three/cannon)
+- [ ] QA manuale browser: checklist su Chrome/Firefox/Safari (WebGL, localStorage, resize)
+- [ ] Deploy: build statica su GitHub Pages o itch.io
+- [ ] CI minimale: `tsc --noEmit` + `vitest run` su push
+
+---
+
+## Ordine consigliato (prossimi commit)
+
+1. **16** — Forge.ts + test (Tempra/Trasmutazione/Fusione con guardrail)
+2. **17** — Bivio Intermission + Gran Forgia + UI forgia
+3. **18** — HP persistenti + cura ai boss + ACT_TRANSITION completa + SavedRun v2
+4. **19** — Equip nello shop + dote di partenza
+5. **20** — MAIN_MENU + Collezione + RunStats/RECAP
+6. **21+** — Polish (FX, audio, mobile) e deploy
