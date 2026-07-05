@@ -23,13 +23,15 @@ goblin-revenge/
 │   │   ├── TextureGenerator.ts # CanvasTexture riutilizzabili (zero leak)
 │   │   ├── MagneticPhysics.ts  # Quaternione target + Slerp (yaw libero)
 │   │   └── DiceWorld.ts        # Arena fisica 3g, Promise per Visual Blocking
-│   ├── ui/                 # ← Fase 5 (Svelte)
-│   │   └── App.svelte            [prossimo]
-│   └── GameManager.ts      # ← Fase 5: collante engine ↔ 3D ↔ UI [prossimo]
+│   ├── ui/                 # ← DOM LAYER (Svelte)
+│   │   ├── stores.ts       # Store reattivi: solo viste serializzabili
+│   │   └── App.svelte      # HUD, intenti, skill, slot, overlay
+│   └── GameManager.ts      # Collante engine ↔ DiceWorld ↔ store
 └── tests/                  # Vitest (piano di verifica del GDD)
     ├── damage.test.ts      #   Pipeline moltiplicativa + ordinamento middleware
     ├── engine.test.ts      #   Dopamine Cap, Visual Blocking, curve, hydration
-    └── magnetic.test.ts    #   Determinismo dell'allineamento sui quaternioni
+    ├── magnetic.test.ts    #   Determinismo dell'allineamento sui quaternioni
+    └── equipment.test.ts   #   Regola 5 slot, indipendenza dall'ordine, format
 ```
 
 ## Dove avviene lo scaling esponenziale
@@ -48,8 +50,8 @@ Tutte le grandezze che scalano usano `Decimal` (break_infinity.js) per superare 
 
 ```bash
 npm install
-npm test        # 16 unit test (pipeline, anti-loop, hydration, quaternioni)
-npm run dev     # harness di verifica: lancia i dadi e confronta col log logico
+npm test        # 22 unit test (pipeline, anti-loop, quaternioni, equip)
+npm run dev     # gioco completo: HUD Svelte + arena 3D integrate
 ```
 
 ## Roadmap commit
@@ -65,11 +67,13 @@ npm run dev     # harness di verifica: lancia i dadi e confronta col log logico
 7. `feat(graphics): MagneticPhysics — allineamento sul quaternione target`
 8. `feat(graphics): DiceWorld — arena Three.js + Cannon-es guidata (+ dev harness)`
 
-**Prossimi (Fase 5 del piano):**
-9. `feat(ui): App.svelte — HUD, barre HP, intenti, pannello skill, 5 slot equip`
-10. `feat: GameManager — integrazione engine ↔ DiceWorld ↔ Svelte store`
-11. `feat(meta): struttura ad Atti (10+1 boss), sblocchi dadi nel pool`
-12. `feat(meta): shop con scaleShopCost + inventario a 5 slot`
+9. `feat: GameManager + store Svelte, equipaggiamento 5 slot, formatBigNumber`
+10. `feat(ui): App.svelte — HUD ibrida completa e integrazione finale`
+
+**Prossimi (meta-progressione):**
+11. `feat(meta): struttura ad Atti (10 incontri + boss), sblocchi dadi nel pool`
+12. `feat(meta): shop con scaleShopCost, oro e acquisto potenziamenti facce`
+13. `feat(meta): salvataggio run su localStorage via persistence.ts`
 
 ## Migliorie introdotte rispetto ai documenti di design
 
