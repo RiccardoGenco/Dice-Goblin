@@ -19,16 +19,17 @@ goblin-revenge/
 │   │   ├── skills.ts       #   Le 4 skill fisse di classe
 │   │   ├── BattleEngine.ts #   Macchina a stati, Dopamine Cap, intenti nemici
 │   │   └── persistence.ts  #   Hydration dei Decimal dai salvataggi
-│   ├── graphics/           # ← Fase 3-4 (Three.js + Cannon-es)
-│   │   ├── TextureGenerator.ts   [prossimo]
-│   │   ├── DiceWorld.ts          [prossimo]
-│   │   └── MagneticPhysics.ts    [prossimo]
+│   ├── graphics/           # ← MOTORE 3D (Three.js + Cannon-es, Fisica Guidata)
+│   │   ├── TextureGenerator.ts # CanvasTexture riutilizzabili (zero leak)
+│   │   ├── MagneticPhysics.ts  # Quaternione target + Slerp (yaw libero)
+│   │   └── DiceWorld.ts        # Arena fisica 3g, Promise per Visual Blocking
 │   ├── ui/                 # ← Fase 5 (Svelte)
 │   │   └── App.svelte            [prossimo]
 │   └── GameManager.ts      # ← Fase 5: collante engine ↔ 3D ↔ UI [prossimo]
 └── tests/                  # Vitest (piano di verifica del GDD)
     ├── damage.test.ts      #   Pipeline moltiplicativa + ordinamento middleware
-    └── engine.test.ts      #   Dopamine Cap, Visual Blocking, curve, hydration
+    ├── engine.test.ts      #   Dopamine Cap, Visual Blocking, curve, hydration
+    └── magnetic.test.ts    #   Determinismo dell'allineamento sui quaternioni
 ```
 
 ## Dove avviene lo scaling esponenziale
@@ -47,8 +48,8 @@ Tutte le grandezze che scalano usano `Decimal` (break_infinity.js) per superare 
 
 ```bash
 npm install
-npm test        # 12 unit test (pipeline, anti-loop, hydration, curve)
-npm run dev     # dev server Vite (dalla Fase 3 in poi)
+npm test        # 16 unit test (pipeline, anti-loop, hydration, quaternioni)
+npm run dev     # harness di verifica: lancia i dadi e confronta col log logico
 ```
 
 ## Roadmap commit
@@ -60,10 +61,11 @@ npm run dev     # dev server Vite (dalla Fase 3 in poi)
 4. `feat(core): BattleEngine event-driven + persistence hydration`
 5. `test(core): pipeline, Dopamine Cap, Visual Blocking, curve`
 
-**Prossimi (Fasi 3-5 del piano):**
 6. `feat(graphics): TextureGenerator — CanvasTexture dinamiche per faccia`
-7. `feat(graphics): DiceWorld — scena Three.js + mondo Cannon-es (arena)`
-8. `feat(graphics): MagneticPhysics — torque di allineamento sul quaternione target`
+7. `feat(graphics): MagneticPhysics — allineamento sul quaternione target`
+8. `feat(graphics): DiceWorld — arena Three.js + Cannon-es guidata (+ dev harness)`
+
+**Prossimi (Fase 5 del piano):**
 9. `feat(ui): App.svelte — HUD, barre HP, intenti, pannello skill, 5 slot equip`
 10. `feat: GameManager — integrazione engine ↔ DiceWorld ↔ Svelte store`
 11. `feat(meta): struttura ad Atti (10+1 boss), sblocchi dadi nel pool`
