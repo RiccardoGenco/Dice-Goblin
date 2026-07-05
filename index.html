@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Goblin Revenge — Dev Harness Dadi 3D</title>
+  <style>
+    body { margin: 0; background: #101014; color: #e8e8f0; font-family: monospace; }
+    #arena { display: block; width: 100vw; height: 80vh; }
+    #hud { padding: 12px; display: flex; gap: 16px; align-items: center; }
+    button { background: #3d1f4f; color: #ff5c8a; border: 1px solid #ff5c8a;
+             padding: 8px 20px; font-family: inherit; cursor: pointer; }
+    #log { white-space: pre; opacity: 0.8; }
+  </style>
+</head>
+<body>
+  <canvas id="arena"></canvas>
+  <div id="hud">
+    <button id="roll">🎲 Lancia i dadi</button>
+    <div id="log">Verifica manuale: la faccia 3D in alto deve corrispondere al log.</div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

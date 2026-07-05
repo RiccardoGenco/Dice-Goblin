@@ -1,0 +1,224 @@
+import * as THREE from 'three';
+import * as CANNON from 'cannon-es';
+import { GoblinDie } from '@core/GoblinDie';
+import { DieFace, RNG, defaultRNG } from '@core/types';
+import { DieTextureSet } from './TextureGenerator';
+import { magneticStep, DEFAULT_MAGNETIC, MagneticConfig } from './MagneticPhysics';
+
+/* ============================================================
+ * DiceWorld — Arena di lancio 3D (GDD §6.3, Piano Fase 4)
+ *
+ * Scena Three.js + mondo Cannon-es (pavimento + 4 pareti di
+ * contenimento invisibili). I dadi vengono lanciati con forze
+ * reali; il risultato è però già deciso dal BattleEngine: la
+ * faccia estratta viene "recitata" tramite MagneticPhysics.
+ *
+ * PACING: gravità aumentata (~3g) e damping alto per chiudere
+ * ogni lancio entro ~1.2s, come da specifica 3D.
+ * ============================================================ */
+
+const DIE_SIZE = 1;
+const ARENA_HALF = 5; // semi-larghezza dell'arena
+
+interface ActiveDie {
+  mesh: THREE.Mesh;
+  body: CANNON.Body;
+  textures: DieTextureSet;
+  /** Indice (0-5) della faccia BoxGeometry che deve finire in alto */
+  targetFaceIndex: number;
+  settled: boolean;
+}
+
+export class DiceWorld {
+  public readonly scene = new THREE.Scene();
+  public readonly camera: THREE.PerspectiveCamera;
+  private readonly renderer: THREE.WebGLRenderer;
+  private readonly world: CANNON.World;
+  private active: ActiveDie[] = [];
+  private resolveRoll: (() => void) | null = null;
+  private readonly clock = new THREE.Clock();
+
+  constructor(
+    canvas: HTMLCanvasElement,
+    private readonly magneticConfig: MagneticConfig = DEFAULT_MAGNETIC,
+    private readonly rng: RNG = defaultRNG
+  ) {
+    // --- Rendering
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+
+    this.camera = new THREE.PerspectiveCamera(
+      45,
+      canvas.clientWidth / canvas.clientHeight,
+      0.1,
+      100
+    );
+    this.camera.position.set(0, 9, 7);
+    this.camera.lookAt(0, 0, 0);
+
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const key = new THREE.DirectionalLight(0xffffff, 1.4);
+    key.position.set(4, 10, 6);
+    this.scene.add(key);
+
+    // Pavimento visivo
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(ARENA_HALF * 2, ARENA_HALF * 2),
+      new THREE.MeshStandardMaterial({ color: 0x1a4a2e, roughness: 0.9 })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    this.scene.add(floor);
+
+    // --- Fisica: gravità triplicata per un pacing rapido (~1.2s)
+    this.world = new CANNON.World({ gravity: new CANNON.Vec3(0, -29.4, 0) });
+
+    const groundMat = new CANNON.Material('ground');
+    const ground = new CANNON.Body({ type: CANNON.Body.STATIC, material: groundMat });
+    ground.addShape(new CANNON.Plane());
+    ground.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+    this.world.addBody(ground);
+
+    // 4 pareti invisibili: nessun dado può uscire dall'area visiva
+    const wallDefs: Array<[number, number, number, number]> = [
+      [ARENA_HALF, 0, 0, -Math.PI / 2], // +x, normale verso -x
+      [-ARENA_HALF, 0, 0, Math.PI / 2],
+      [0, 0, ARENA_HALF, Math.PI],      // +z, normale verso -z
+      [0, 0, -ARENA_HALF, 0]
+    ];
+    for (const [x, y, z, yRot] of wallDefs) {
+      const wall = new CANNON.Body({ type: CANNON.Body.STATIC });
+      wall.addShape(new CANNON.Plane());
+      wall.position.set(x, y, z);
+      wall.quaternion.setFromEuler(0, yRot, 0);
+      this.world.addBody(wall);
+    }
+
+    this.animate();
+  }
+
+  /**
+   * Lancia i dadi con i risultati GIÀ estratti dal BattleEngine.
+   * Restituisce una Promise risolta quando tutti i dadi sono
+   * assestati: è il resolver perfetto per il Visual Blocking
+   * Callback di `onDicesRolled` (GDD §5.2).
+   */
+  public throwDice(dice: GoblinDie[], results: DieFace[]): Promise<void> {
+    this.clearDice();
+
+    dice.forEach((die, i) => {
+      const face = results[i];
+      if (!face) return;
+
+      // La faccia target è l'indice della faccia estratta nel dado logico
+      const targetFaceIndex = Math.max(0, die.faces.indexOf(face)) % 6;
+
+      const textures = new DieTextureSet(die);
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(DIE_SIZE, DIE_SIZE, DIE_SIZE),
+        textures.materials
+      );
+      this.scene.add(mesh);
+
+      // Corpo rigido con spawn sfalsato: niente sovrapposizioni
+      const body = new CANNON.Body({
+        mass: 1,
+        shape: new CANNON.Box(new CANNON.Vec3(DIE_SIZE / 2, DIE_SIZE / 2, DIE_SIZE / 2)),
+        position: new CANNON.Vec3(
+          -2 + (i % 3) * 2 + this.rng.next() * 0.5,
+          4 + Math.floor(i / 3) * 1.5,
+          -2 + this.rng.next() * 1.5
+        ),
+        // Damping alto: i dadi si fermano rapidamente (pacing)
+        linearDamping: 0.25,
+        angularDamping: 0.25
+      });
+      body.velocity.set(2 + this.rng.next() * 3, -2, 2 + this.rng.next() * 2);
+      body.angularVelocity.set(
+        (this.rng.next() - 0.5) * 20,
+        (this.rng.next() - 0.5) * 20,
+        (this.rng.next() - 0.5) * 20
+      );
+      this.world.addBody(body);
+
+      this.active.push({ mesh, body, textures, targetFaceIndex, settled: false });
+    });
+
+    return new Promise(resolve => {
+      this.resolveRoll = resolve;
+    });
+  }
+
+  private animate = (): void => {
+    requestAnimationFrame(this.animate);
+    const dt = Math.min(this.clock.getDelta(), 1 / 30);
+    this.world.step(1 / 60, dt, 3);
+
+    let allSettled = this.active.length > 0;
+
+    for (const die of this.active) {
+      if (!die.settled) {
+        const speed =
+          die.body.velocity.length() + die.body.angularVelocity.length();
+
+        // Fase di decelerazione: si attiva la guida magnetica
+        if (speed < this.magneticConfig.activationSpeed) {
+          const current = new THREE.Quaternion(
+            die.body.quaternion.x,
+            die.body.quaternion.y,
+            die.body.quaternion.z,
+            die.body.quaternion.w
+          );
+          const { rotation, settled } = magneticStep(
+            current,
+            die.targetFaceIndex,
+            this.magneticConfig
+          );
+          die.body.quaternion.set(rotation.x, rotation.y, rotation.z, rotation.w);
+
+          // Freno artificiale: smorziamo le velocità residue
+          die.body.velocity.scale(this.magneticConfig.brakeFactor, die.body.velocity);
+          die.body.angularVelocity.scale(
+            this.magneticConfig.brakeFactor,
+            die.body.angularVelocity
+          );
+
+          if (settled) {
+            die.settled = true;
+            die.body.angularVelocity.setZero();
+            die.body.velocity.setZero();
+            die.body.type = CANNON.Body.STATIC; // inchiodato: mai in bilico
+          }
+        }
+      }
+
+      die.mesh.position.copy(die.body.position as unknown as THREE.Vector3);
+      die.mesh.quaternion.copy(die.body.quaternion as unknown as THREE.Quaternion);
+      if (!die.settled) allSettled = false;
+    }
+
+    if (allSettled && this.resolveRoll) {
+      const resolve = this.resolveRoll;
+      this.resolveRoll = null;
+      resolve(); // sblocca la Promise di throwDice -> il BattleEngine avanza
+    }
+
+    this.renderer.render(this.scene, this.camera);
+  };
+
+  private clearDice(): void {
+    for (const die of this.active) {
+      this.scene.remove(die.mesh);
+      die.mesh.geometry.dispose();
+      die.textures.dispose(); // rilascio GPU esplicito
+      this.world.removeBody(die.body);
+    }
+    this.active = [];
+  }
+
+  public resize(width: number, height: number): void {
+    this.camera.aspect = width / height;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(width, height, false);
+  }
+}
