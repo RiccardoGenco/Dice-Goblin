@@ -1,0 +1,159 @@
+import { describe, expect, it } from 'vitest';
+import Decimal from 'break_infinity.js';
+import {
+  RunManager,
+  ENCOUNTERS_PER_ACT,
+  TOTAL_ACTS,
+  freshRunState
+} from '../src/core/RunManager';
+import { Shop } from '../src/core/Shop';
+import { SaveManager, memoryStorage, serializeDie, hydrateDie } from '../src/core/SaveManager';
+import { GoblinDie } from '../src/core/GoblinDie';
+import { UNLOCKABLE_DICE, createDieFromBlueprint } from '../src/core/diceCatalog';
+import { CombatantStats, FaceType, Rarity, seededRNG } from '../src/core/types';
+
+describe('RunManager — struttura ad Atti (MVP §1)', () => {
+  it('il level globale è continuo tra gli Atti', () => {
+    const run = new RunManager();
+    expect(run.level).toBe(0);
+    run.state.act = 2;
+    run.state.encounter = 1;
+    expect(run.level).toBe(ENCOUNTERS_PER_ACT); // 11
+    run.state.act = 3;
+    run.state.encounter = 11;
+    expect(run.level).toBe(32);
+  });
+
+  it("l'undicesimo incontro è il boss e chiude l'Atto", () => {
+    const run = new RunManager();
+    for (let i = 0; i < ENCOUNTERS_PER_ACT - 1; i++) {
+      expect(run.isBoss).toBe(false);
+      expect(run.advance()).toBe('next-encounter');
+    }
+    expect(run.isBoss).toBe(true);
+    expect(run.advance()).toBe('act-completed');
+    expect(run.state.act).toBe(2);
+    expect(run.state.encounter).toBe(1);
+  });
+
+  it('il terzo boss completa la run', () => {
+    const run = new RunManager({ act: TOTAL_ACTS, encounter: ENCOUNTERS_PER_ACT, gold: new Decimal(0), purchases: 0 });
+    expect(run.advance()).toBe('run-completed');
+  });
+
+  it("la ricompensa cresce di 1.5^level (stessa curva dei costi shop)", () => {
+    const runA = new RunManager();
+    const runB = new RunManager({ act: 1, encounter: 5, gold: new Decimal(0), purchases: 0 });
+    const ratio = runB.goldReward().div(runA.goldReward()).toNumber();
+    expect(ratio).toBeCloseTo(1.5 ** 4, 6);
+  });
+
+  it('spendGold rifiuta senza addebitare se l\'oro non basta', () => {
+    const run = new RunManager();
+    run.addGold(new Decimal(10));
+    expect(run.spendGold(new Decimal(50))).toBe(false);
+    expect(run.state.gold.toNumber()).toBe(10);
+    expect(run.spendGold(new Decimal(10))).toBe(true);
+    expect(run.state.gold.toNumber()).toBe(0);
+    expect(run.state.purchases).toBe(1);
+  });
+});
+
+describe('Shop — economia su curva esponenziale (GDD §4.2)', () => {
+  const stats = (): CombatantStats => ({
+    str: new Decimal(10),
+    int: new Decimal(1),
+    vit: new Decimal(12),
+    lck: 0
+  });
+
+  it('i costi crescono di 1.5^level', () => {
+    const shop = new Shop(seededRNG(1));
+    const bag = [new GoblinDie(Rarity.COMUNE, undefined, seededRNG(1))];
+    const cheap = shop.generateOffers(0, 0, bag, [])[0]!;
+    const dear = shop.generateOffers(8, 0, bag, [])[0]!;
+    expect(dear.cost.div(cheap.cost).toNumber()).toBeGreaterThan(1.5 ** 7);
+  });
+
+  it('gli acquisti ripetuti rincarano le offerte (+25% composto)', () => {
+    const shop = new Shop(seededRNG(1));
+    const bag = [new GoblinDie(Rarity.COMUNE, undefined, seededRNG(1))];
+    const first = shop.generateOffers(0, 0, bag, [])[0]!;
+    const later = shop.generateOffers(0, 4, bag, [])[0]!;
+    expect(later.cost.gt(first.cost)).toBe(true);
+  });
+
+  it('offre un dado del pool solo se non è già in borsa', () => {
+    const shop = new Shop(seededRNG(1));
+    const golden = UNLOCKABLE_DICE[0]!;
+    const emptyBag = [new GoblinDie(Rarity.COMUNE)];
+    const withDie = [...emptyBag, createDieFromBlueprint(golden)];
+
+    const offered = shop.generateOffers(0, 0, emptyBag, [golden]);
+    const notOffered = shop.generateOffers(0, 0, withDie, [golden]);
+    expect(offered.some(o => o.blueprintId === golden.id)).toBe(true);
+    expect(notOffered.some(o => o.blueprintId === golden.id)).toBe(false);
+  });
+
+  it('stat-str compone il 30%: due acquisti = ×1.69', () => {
+    const shop = new Shop(seededRNG(1));
+    const ctx = { stats: stats(), bag: [] as GoblinDie[], blueprints: UNLOCKABLE_DICE };
+    const offer = { id: 'x', kind: 'stat-str' as const, icon: '', label: '', description: '', cost: new Decimal(0) };
+    shop.apply(offer, ctx);
+    shop.apply(offer, ctx);
+    expect(ctx.stats.str.toNumber()).toBeCloseTo(10 * 1.3 * 1.3, 6);
+  });
+});
+
+describe('SaveManager — round-trip run e meta (GDD §2.2)', () => {
+  it('salva e ricarica una run completa con Decimal reidratati', () => {
+    const save = new SaveManager(memoryStorage());
+    const bag = [
+      new GoblinDie(Rarity.RARO),
+      createDieFromBlueprint(UNLOCKABLE_DICE[0]!)
+    ];
+    save.saveRun({
+      run: { act: 2, encounter: 7, gold: new Decimal('3.5e12'), purchases: 3 },
+      playerStats: { str: new Decimal('1e40'), int: new Decimal(2), vit: new Decimal(50), lck: 30 },
+      bag,
+      equipmentIds: ['anello-bruto', 'idolo-goblin']
+    });
+
+    const loaded = save.loadRun();
+    expect(loaded).not.toBeNull();
+    expect(loaded!.run.act).toBe(2);
+    expect(loaded!.run.gold.eq(new Decimal('3.5e12'))).toBe(true);
+    expect(loaded!.playerStats.str.eq(new Decimal('1e40'))).toBe(true);
+    expect(typeof loaded!.playerStats.str.times).toBe('function'); // prototipo OK
+    expect(loaded!.bag.length).toBe(2);
+    expect(loaded!.bag[1]!.blueprintId).toBe('dado-dorato');
+    expect(loaded!.equipmentIds).toEqual(['anello-bruto', 'idolo-goblin']);
+  });
+
+  it('il round-trip dei dadi preserva facce, tipi e rarità', () => {
+    const original = createDieFromBlueprint(UNLOCKABLE_DICE[2]!); // colossale
+    const restored = hydrateDie(JSON.parse(JSON.stringify(serializeDie(original))));
+    expect(restored.rarity).toBe(original.rarity);
+    restored.faces.forEach((f, i) => {
+      expect(f.type).toBe(original.faces[i]!.type);
+      expect(f.value.eq(original.faces[i]!.value)).toBe(true);
+    });
+    expect(restored.faces.some(f => f.type === FaceType.MULTIPLIER)).toBe(true);
+  });
+
+  it('un salvataggio corrotto ritorna null senza eccezioni', () => {
+    const storage = memoryStorage();
+    storage.setItem('goblin-revenge:run', '{corrotto!!!');
+    const save = new SaveManager(storage);
+    expect(save.loadRun()).toBeNull();
+  });
+
+  it('gli sblocchi meta sono permanenti e senza duplicati', () => {
+    const save = new SaveManager(memoryStorage());
+    expect(save.loadUnlocks()).toEqual([]);
+    save.addUnlock('dado-dorato');
+    save.addUnlock('dado-dorato');
+    save.addUnlock('dado-ricorsivo');
+    expect(save.loadUnlocks()).toEqual(['dado-dorato', 'dado-ricorsivo']);
+  });
+});
