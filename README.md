@@ -18,7 +18,11 @@ goblin-revenge/
 │   │   ├── DamagePipeline.ts # Pipeline 3 fasi + middleware PRE_ADD→ADD→MULT→POST_MULT
 │   │   ├── skills.ts       #   Le 4 skill fisse di classe
 │   │   ├── BattleEngine.ts #   Macchina a stati, Dopamine Cap, intenti nemici
-│   │   └── persistence.ts  #   Hydration dei Decimal dai salvataggi
+│   │   ├── persistence.ts  #   Hydration dei Decimal dai salvataggi
+│   │   ├── RunManager.ts   #   3 Atti x (10+boss), oro su curva 1.5^lv
+│   │   ├── Shop.ts         #   Offerte con Cost(lv)=base*1.5^lv
+│   │   ├── diceCatalog.ts  #   Pool sbloccabile (Dorato/Ricorsivo/Colossale)
+│   │   └── SaveManager.ts  #   Run + sblocchi permanenti su localStorage
 │   ├── graphics/           # ← MOTORE 3D (Three.js + Cannon-es, Fisica Guidata)
 │   │   ├── TextureGenerator.ts # CanvasTexture riutilizzabili (zero leak)
 │   │   ├── MagneticPhysics.ts  # Quaternione target + Slerp (yaw libero)
@@ -50,7 +54,7 @@ Tutte le grandezze che scalano usano `Decimal` (break_infinity.js) per superare 
 
 ```bash
 npm install
-npm test        # 22 unit test (pipeline, anti-loop, quaternioni, equip)
+npm test        # 35 unit test (pipeline, anti-loop, quaternioni, meta)
 npm run dev     # gioco completo: HUD Svelte + arena 3D integrate
 ```
 
@@ -70,10 +74,15 @@ npm run dev     # gioco completo: HUD Svelte + arena 3D integrate
 9. `feat: GameManager + store Svelte, equipaggiamento 5 slot, formatBigNumber`
 10. `feat(ui): App.svelte — HUD ibrida completa e integrazione finale`
 
-**Prossimi (meta-progressione):**
-11. `feat(meta): struttura ad Atti (10 incontri + boss), sblocchi dadi nel pool`
-12. `feat(meta): shop con scaleShopCost, oro e acquisto potenziamenti facce`
-13. `feat(meta): salvataggio run su localStorage via persistence.ts`
+11. `feat(meta): struttura ad Atti e pool dadi sbloccabili`
+12. `feat(meta): Shop con costi su scaleShopCost`
+13. `feat(meta): SaveManager su localStorage via persistence`
+14. `feat: integrazione meta in GameManager e UI`
+
+**Prossimi (polish):**
+15. `feat(fx): shader glow per rarità, particellari, screen-shake overflow`
+16. `feat(audio): SFX lanci/impatti e musica adattiva`
+17. `chore: bilanciamento fine + responsive mobile`
 
 ## Migliorie introdotte rispetto ai documenti di design
 
