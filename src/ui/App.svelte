@@ -6,7 +6,8 @@
   import { MAX_EQUIPMENT_SLOTS } from '@core/equipment';
   import {
     playerView, enemyView, intentView, battleState, rolledChips,
-    overflowActive, uiMode, battleResult, actLevel, logLines, equipVersion
+    overflowActive, uiMode, battleResult, logLines, equipVersion,
+    uiPhase, goldView, runLabel, shopOffers, rewardBanner
   } from './stores';
 
   let canvas: HTMLCanvasElement;
@@ -57,10 +58,17 @@
 </script>
 
 <main>
+  <!-- ===== Header run: Atto/incontro, oro, nuova run ===== -->
+  <section class="runbar">
+    <span class="runlabel">{$runLabel}</span>
+    <span class="gold">💰 {$goldView}</span>
+    <button class="mini" on:click={() => void gm?.newRun()}>🔄 Nuova Run</button>
+  </section>
+
   <!-- ===== Pannello nemico + intento (MVP §2: intenti deterministici) ===== -->
   <section class="panel enemy">
     <div class="row">
-      <span class="name">🗡️ Avventuriero — Atto {$actLevel + 1}</span>
+      <span class="name">🗡️ Avventuriero</span>
       {#if $intentView}
         <span class="intent" title="Intento del prossimo turno">
           {$intentView.icon} {$intentView.label}: <b>{$intentView.value}</b>
@@ -151,19 +159,52 @@
     {#each $logLines as line}<div>{line}</div>{/each}
   </section>
 
-  <!-- ===== Overlay fine battaglia ===== -->
-  {#if $battleResult}
+  <!-- ===== Overlay Shop (tra un incontro e l'altro) ===== -->
+  {#if $uiPhase === 'shop'}
+    <div class="overlay">
+      <div class="overlay-box shop-box">
+        <h2>🛒 Il Mercante Goblin</h2>
+        {#if $rewardBanner}<p class="unlock">{$rewardBanner}</p>{/if}
+        <p class="gold">💰 {$goldView} oro</p>
+        <div class="offers">
+          {#each $shopOffers as offer (offer.id)}
+            <button
+              class="offer"
+              disabled={!offer.affordable}
+              title={offer.description}
+              on:click={() => gm?.buyOffer(offer.id)}
+            >
+              <span class="icon">{offer.icon}</span>
+              <span class="label">{offer.label}</span>
+              <span class="hint">{offer.description}</span>
+              <span class="cost" class:too-expensive={!offer.affordable}>💰 {offer.cost}</span>
+            </button>
+          {/each}
+          {#if $shopOffers.length === 0}
+            <p class="hint">Hai svuotato il banco del mercante!</p>
+          {/if}
+        </div>
+        <button class="skill" on:click={() => void gm?.leaveShop()}>⚔️ Prossimo incontro</button>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ===== Overlay fine run / sconfitta ===== -->
+  {#if $uiPhase === 'run-complete'}
     <div class="overlay">
       <div class="overlay-box">
-        {#if $battleResult === 'victory'}
-          <h2>🏆 Vittoria!</h2>
-          <p>L'Avventuriero è stato respinto. Il prossimo sarà 1.6× più coriaceo…</p>
-          <button class="skill" on:click={() => void gm?.nextAct()}>➡️ Atto successivo</button>
-        {:else}
-          <h2>💀 Sconfitta</h2>
-          <p>Il Goblin è stato sopraffatto.</p>
-          <button class="skill" on:click={() => void gm?.retry()}>↩️ Riprova l'Atto</button>
-        {/if}
+        <h2>👑 RUN COMPLETATA!</h2>
+        <p>Hai sconfitto tutti e 3 i Boss. Il pool dei dadi è più ricco per sempre.</p>
+        {#if $rewardBanner}<p class="unlock">{$rewardBanner}</p>{/if}
+        <button class="skill" on:click={() => void gm?.newRun()}>🔄 Nuova Run</button>
+      </div>
+    </div>
+  {:else if $battleResult === 'defeat'}
+    <div class="overlay">
+      <div class="overlay-box">
+        <h2>💀 Run terminata</h2>
+        <p>Il Goblin è caduto. Gli sblocchi permanenti restano tuoi.</p>
+        <button class="skill" on:click={() => void gm?.newRun()}>🔄 Nuova Run</button>
       </div>
     </div>
   {/if}
@@ -242,4 +283,27 @@
     background: #1a1a22; border: 1px solid #ff5c8a; border-radius: 12px;
     padding: 28px 40px; text-align: center; display: flex; flex-direction: column; gap: 12px;
   }
+
+  /* ---- Meta: runbar e shop ---- */
+  .runbar {
+    display: flex; justify-content: space-between; align-items: center;
+    background: #14141a; border: 1px solid #33333f; border-radius: 8px; padding: 6px 14px;
+  }
+  .runlabel { font-weight: bold; color: #ffb84c; }
+  .gold { color: #ffd84c; }
+  .unlock { color: #7dff9b; font-weight: bold; }
+  .shop-box { min-width: 420px; }
+  .offers { display: flex; flex-direction: column; gap: 8px; }
+  .offer {
+    display: grid; grid-template-columns: 32px 1fr auto; grid-template-rows: auto auto;
+    gap: 2px 10px; align-items: center; text-align: left; cursor: pointer;
+    background: #1f3d2a; border: 1px solid #4cc94c; border-radius: 8px;
+    padding: 8px 12px; color: #e8e8f0; font-family: inherit;
+  }
+  .offer .icon { grid-row: span 2; font-size: 20px; }
+  .offer .label { font-weight: bold; font-size: 13px; }
+  .offer .hint { grid-column: 2; font-size: 11px; opacity: 0.75; }
+  .offer .cost { grid-row: span 2; color: #ffd84c; font-size: 12px; }
+  .offer:disabled { opacity: 0.4; cursor: default; }
+  .cost.too-expensive { color: #ff5c5c; }
 </style>

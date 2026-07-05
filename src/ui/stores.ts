@@ -49,6 +49,24 @@ export const actLevel = writable(0);
 export const logLines = writable<string[]>([]);
 export const equipVersion = writable(0); // bump per ri-renderizzare gli slot
 
+/* ---- Meta-progressione (commit 11-13) ---- */
+export interface ShopOfferView {
+  id: string;
+  icon: string;
+  label: string;
+  description: string;
+  cost: string;
+  affordable: boolean;
+}
+
+/** 'battle' = combattimento; 'shop' = negozio tra un incontro e
+ *  l'altro; 'run-complete' = terzo boss sconfitto. */
+export const uiPhase = writable<'battle' | 'shop' | 'run-complete'>('battle');
+export const goldView = writable('0');
+export const runLabel = writable('Atto 1 — 1/10');
+export const shopOffers = writable<ShopOfferView[]>([]);
+export const rewardBanner = writable<string | null>(null);
+
 export function pushLog(line: string): void {
   logLines.update(lines => [line, ...lines].slice(0, 6));
 }

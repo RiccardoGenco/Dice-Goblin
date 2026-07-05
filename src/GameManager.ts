@@ -15,6 +15,10 @@ import {
   SkillId
 } from '@core/types';
 import { DiceWorld } from '@graphics/DiceWorld';
+import { RunManager, BOSS_STAT_MULTIPLIER, freshRunState } from '@core/RunManager';
+import { Shop, ShopOffer } from '@core/Shop';
+import { SaveManager } from '@core/SaveManager';
+import { UNLOCKABLE_DICE, UNLOCK_BY_ACT, getBlueprint } from '@core/diceCatalog';
 import {
   playerView,
   enemyView,
@@ -26,9 +30,15 @@ import {
   battleResult,
   actLevel,
   equipVersion,
+  uiPhase,
+  goldView,
+  runLabel,
+  shopOffers,
+  rewardBanner,
   pushLog,
   CombatantView,
-  DieChip
+  DieChip,
+  ShopOfferView
 } from './ui/stores';
 
 /* ============================================================
@@ -76,10 +86,36 @@ export class GameManager {
   private lastFaces: DieFace[] = [];
   private level = 0;
 
+  /* ---- Meta-progressione (commit 11-13) ---- */
+  public run = new RunManager();
+  private readonly shop = new Shop();
+  private readonly saveMgr = new SaveManager();
+  private unlocks: string[] = [];
+  private currentOffers: ShopOffer[] = [];
+
   constructor(canvas: HTMLCanvasElement) {
     this.diceWorld = new DiceWorld(canvas);
-    this.buildBag();
-    this.newBattle(0);
+    this.unlocks = this.saveMgr.loadUnlocks();
+
+    // Ripristino automatico della run salvata (fail-safe: se il
+    // salvataggio è corrotto, loadRun ritorna null e si riparte)
+    const saved = this.saveMgr.loadRun();
+    if (saved) {
+      this.run = new RunManager(saved.run);
+      this.playerStats.str = saved.playerStats.str;
+      this.playerStats.int = saved.playerStats.int;
+      this.playerStats.vit = saved.playerStats.vit;
+      this.playerStats.lck = saved.playerStats.lck;
+      this.bag = saved.bag;
+      for (const id of saved.equipmentIds) {
+        const item = DEMO_ITEMS.find(i => i.id === id);
+        if (item) this.equipment.equip(item);
+      }
+      pushLog('💾 Run ripristinata dal salvataggio');
+    } else {
+      this.buildBag();
+    }
+    this.newBattle(this.run.level);
   }
 
   /* ---------------- Setup battaglia ---------------- */
@@ -104,25 +140,38 @@ export class GameManager {
 
   public newBattle(level: number): void {
     this.level = level;
-    actLevel.set(level);
+    actLevel.set(this.run.state.act - 1);
     battleResult.set(null);
     uiMode.set('idle');
+    uiPhase.set('battle');
+    this.refreshRunHeader();
 
     /* SCALING ESPONENZIALE DELLA DIFFICOLTÀ (GDD §4.2):
        HP = vit*10 e vit_nemica = base * 1.6^level
-       → gli HP nemici seguono esattamente HPbase * 1.6^level. */
+       → gli HP nemici seguono esattamente HPbase * 1.6^level.
+       I boss (11° incontro) amplificano le stat di ×2.5. */
     const growth = new Decimal(BALANCE.ENEMY_HP_GROWTH).pow(level);
+    const bossMult = this.run.isBoss ? BOSS_STAT_MULTIPLIER : 1;
     const enemyStats: CombatantStats = {
-      str: new Decimal(3).times(growth),
-      int: new Decimal(1).times(growth),
-      vit: new Decimal(8).times(growth),
+      str: new Decimal(3).times(growth).times(bossMult),
+      int: new Decimal(1).times(growth).times(bossMult),
+      vit: new Decimal(8).times(growth).times(bossMult),
       lck: 0
     };
 
     this.engine = new BattleEngine(this.playerStats, enemyStats, this.bag);
     this.equipment.syncPipeline(this.engine.pipeline);
     this.registerListeners();
-    pushLog(`— Atto ${level + 1}: un Avventuriero si avvicina —`);
+    pushLog(
+      this.run.isBoss
+        ? `— 👑 ${this.run.label}: il BOSS sbarra la strada! —`
+        : `— ${this.run.label}: un Avventuriero si avvicina —`
+    );
+  }
+
+  private refreshRunHeader(): void {
+    runLabel.set(this.run.label);
+    goldView.set(formatBigNumber(this.run.state.gold));
   }
 
   public start(): Promise<void> {
@@ -187,7 +236,48 @@ export class GameManager {
     e.on('onBattleEnded', p => {
       battleResult.set(p.winner === 'player' ? 'victory' : 'defeat');
       this.refreshCombatants();
+      if (p.winner === 'player') {
+        this.onVictory();
+      } else {
+        // Roguelike: la sconfitta chiude la run (gli sblocchi meta restano)
+        this.saveMgr.clearRun();
+      }
     });
+  }
+
+  /** Vittoria: ricompensa in oro, avanzamento run, eventuale
+   *  sblocco permanente del boss, autosave e apertura shop. */
+  private onVictory(): void {
+    const reward = this.run.goldReward();
+    this.run.addGold(reward);
+    pushLog(`💰 Bottino: ${formatBigNumber(reward)} oro`);
+
+    const beatenAct = this.run.state.act;
+    const result = this.run.advance();
+
+    if (result === 'act-completed' || result === 'run-completed') {
+      // Sblocco ORIZZONTALE permanente (MVP §1): nuovo dado nel pool
+      const unlockId = UNLOCK_BY_ACT[beatenAct];
+      const bp = unlockId ? getBlueprint(unlockId) : undefined;
+      if (bp && !this.unlocks.includes(bp.id)) {
+        this.unlocks = this.saveMgr.addUnlock(bp.id);
+        rewardBanner.set(`${bp.icon} Sbloccato per sempre: ${bp.name}!`);
+        pushLog(`🔓 ${bp.name} aggiunto al pool delle run future`);
+      } else {
+        rewardBanner.set(null);
+      }
+    } else {
+      rewardBanner.set(null);
+    }
+
+    if (result === 'run-completed') {
+      this.saveMgr.clearRun(); // la run è finita: si riparte da zero
+      uiPhase.set('run-complete');
+      return;
+    }
+
+    this.autosave();
+    this.openShop();
   }
 
   private toChip(face: DieFace): DieChip {
@@ -256,6 +346,7 @@ export class GameManager {
       pushLog(`✋ Slot pieni (o duplicato): scarta qualcosa prima!`);
     }
     equipVersion.update(v => v + 1);
+    this.autosave();
   }
 
   public unequipSlot(slotIndex: number): void {
@@ -265,17 +356,91 @@ export class GameManager {
       pushLog(`🗑️ Rimosso: ${removed.name}`);
     }
     equipVersion.update(v => v + 1);
+    this.autosave();
   }
 
-  /* ---------------- Fine battaglia ---------------- */
+  /* ---------------- Shop e persistenza ---------------- */
 
-  public nextAct(): Promise<void> {
-    this.newBattle(this.level + 1);
+  private openShop(): void {
+    const available = UNLOCKABLE_DICE.filter(bp => this.unlocks.includes(bp.id));
+    this.currentOffers = this.shop.generateOffers(
+      this.run.level,
+      this.run.state.purchases,
+      this.bag,
+      available
+    );
+    this.publishOffers();
+    this.refreshRunHeader();
+    uiPhase.set('shop');
+  }
+
+  private publishOffers(): void {
+    const gold = this.run.state.gold;
+    shopOffers.set(
+      this.currentOffers.map<ShopOfferView>(o => ({
+        id: o.id,
+        icon: o.icon,
+        label: o.label,
+        description: o.description,
+        cost: formatBigNumber(o.cost),
+        affordable: gold.gte(o.cost)
+      }))
+    );
+  }
+
+  /** Acquisto dallo shop: addebita, applica, rigenera le viste.
+   *  L'offerta comprata sparisce; le altre restano (ma i prezzi
+   *  futuri saliranno di 1.25^acquisti). */
+  public buyOffer(offerId: string): void {
+    const offer = this.currentOffers.find(o => o.id === offerId);
+    if (!offer) return;
+    if (!this.run.spendGold(offer.cost)) {
+      pushLog(`✋ Oro insufficiente per ${offer.label}`);
+      return;
+    }
+    this.shop.apply(offer, {
+      stats: this.playerStats,
+      bag: this.bag,
+      blueprints: UNLOCKABLE_DICE
+    });
+    pushLog(`${offer.icon} Acquistato: ${offer.label}`);
+    this.currentOffers = this.currentOffers.filter(o => o.id !== offerId);
+    this.publishOffers();
+    this.refreshRunHeader();
+    this.autosave();
+  }
+
+  /** Chiude lo shop e avvia l'incontro successivo della run */
+  public leaveShop(): Promise<void> {
+    rewardBanner.set(null);
+    this.newBattle(this.run.level);
     return this.start();
   }
 
-  public retry(): Promise<void> {
-    this.newBattle(this.level);
+  private autosave(): void {
+    this.saveMgr.saveRun({
+      run: this.run.state,
+      playerStats: this.playerStats,
+      bag: this.bag,
+      equipmentIds: this.equipment.slots
+        .filter((s): s is EquipmentItem => s !== null)
+        .map(s => s.id)
+    });
+  }
+
+  /** Nuova run da zero: reset di stat, borsa, oro e slot.
+   *  Gli sblocchi META restano: il pool dadi è più ricco. */
+  public newRun(): Promise<void> {
+    this.saveMgr.clearRun();
+    this.run = new RunManager(freshRunState());
+    this.playerStats.str = new Decimal(10);
+    this.playerStats.int = new Decimal(1);
+    this.playerStats.vit = new Decimal(12);
+    this.playerStats.lck = 10;
+    for (let i = 0; i < this.equipment.slots.length; i++) this.equipment.unequip(i);
+    equipVersion.update(v => v + 1);
+    this.buildBag();
+    this.newBattle(0);
     return this.start();
   }
 
