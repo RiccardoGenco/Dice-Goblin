@@ -8,25 +8,24 @@ Legenda: 🔴 gameplay core mancante · 🟡 meta/UX · 🟢 polish · 🔵 tecn
 
 ## 🔴 Gameplay core (bloccanti per il flusso completo delle specs)
 
-- [ ] **Forgia dei Dadi** (`src/core/Forge.ts` + test) — game_flow_specs §9
-  - [ ] Tempra: NORMAL ×1.5 (floor), MULTIPLIER +0.5
-  - [ ] Trasmutazione: cambio tipo faccia, **cap 3 facce non-NORMAL per dado**
-  - [ ] Fusione: sacrifica un dado, un altro eredita la faccia migliore e sale di rarità
-  - [ ] Limite 2 operazioni per visita, anteprima prima/dopo, `redrawFace()` sulle texture
-- [ ] **Gran Forgia** (variante speciale post-boss) — specs §9.bis
-  - [ ] 3 operazioni invece di 2
-  - [ ] Trasmutazione a costo dimezzato (base 45)
-  - [ ] Riforgiatura esclusiva: tutte le facce NORMAL di un dado ×1.25
-- [ ] **Bivio INTERMISSION** (due porte, se ne sceglie una) — specs §7
-  - Oggi la vittoria apre sempre lo shop: manca la scelta Shop/Forgia
-  - [ ] Bivio speciale con porte dorate dopo il Campione — specs §7.bis
+- [x] **Forgia dei Dadi** (`src/core/Forge.ts` + test) — game_flow_specs §9
+  - [x] Tempra: NORMAL ×1.5 (floor), MULTIPLIER +0.5
+  - [x] Trasmutazione: cambio tipo faccia, **cap 3 facce non-NORMAL per dado**
+  - [x] Fusione: sacrifica un dado, un altro eredita la faccia migliore e sale di rarità
+  - [x] Limite 2 operazioni per visita, anteprima prima/dopo, `redrawFace()` sulle texture
+- [x] **Gran Forgia** (variante speciale post-boss) — specs §9.bis
+  - [x] 3 operazioni invece di 2
+  - [x] Trasmutazione a costo dimezzato (base 45)
+  - [x] Riforgiatura esclusiva: tutte le facce NORMAL di un dado ×1.25
+- [x] **Bivio INTERMISSION** (due porte, se ne sceglie una) — specs §7
+  - [x] Bivio speciale con porte dorate dopo il Campione — specs §7.bis
 - [ ] **HP persistenti tra gli incontri** — prerequisito della "cura completa"
   - Oggi ogni battaglia riparte a HP pieni: la tensione roguelike non esiste
   - [ ] Salvare `hp` corrente in `SavedRun` (v2) e passarlo al `BattleEngine`
   - [ ] Cura completa SOLO in ACT_TRANSITION (unico heal del gioco) — specs §10
 - [ ] **ACT_TRANSITION completa** — specs §10
-  - Oggi dopo il Boss d'Atto si apre solo il Mercante Reale
-  - [ ] Sequenza: sblocco → cura → Mercante Reale → Gran Forgia → nuovo Atto
+  - [x] Sequenza: sblocco → Mercante Reale → Gran Forgia → nuovo Atto
+  - [ ] Cura completa (dipende dagli HP persistenti qui sopra)
 
 ## 🟡 Meta e UX (dalle specs, non bloccanti per giocare)
 
@@ -64,9 +63,9 @@ Legenda: 🔴 gameplay core mancante · 🟡 meta/UX · 🟢 polish · 🔵 tecn
 
 ## Ordine consigliato (prossimi commit)
 
-1. **16** — Forge.ts + test (Tempra/Trasmutazione/Fusione con guardrail)
-2. **17** — Bivio Intermission + Gran Forgia + UI forgia
-3. **18** — HP persistenti + cura ai boss + ACT_TRANSITION completa + SavedRun v2
+1. ~~**16** — Forge.ts + test~~ ✅
+2. ~~**17** — Bivio Intermission + Gran Forgia + UI forgia~~ ✅
+3. **18** — HP persistenti + cura ai boss + SavedRun v2
 4. **19** — Equip nello shop + dote di partenza
 5. **20** — MAIN_MENU + Collezione + RunStats/RECAP
 6. **21+** — Polish (FX, audio, mobile) e deploy

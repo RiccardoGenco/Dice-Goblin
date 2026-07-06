@@ -2,17 +2,64 @@
   import { onMount } from 'svelte';
   import { GameManager } from '../GameManager';
   import { SKILLS } from '@core/skills';
-  import { BattleState, SkillId } from '@core/types';
+  import { BattleState, FaceType, SkillId } from '@core/types';
   import { MAX_EQUIPMENT_SLOTS } from '@core/equipment';
   import {
     playerView, enemyView, intentView, battleState, rolledChips,
     overflowActive, uiMode, battleResult, logLines, equipVersion,
-    uiPhase, goldView, runLabel, shopOffers, shopSpecial, rewardBanner
+    uiPhase, goldView, runLabel, shopOffers, shopSpecial, rewardBanner,
+    crossroadSpecial, forgeSpecial, forgeOpsLeft, forgeVersion
   } from './stores';
 
   let canvas: HTMLCanvasElement;
   let gm: GameManager | null = null;
   let selectedChips: number[] = [];
+
+  /* ---- Forgia: stato di selezione ---- */
+  let selDie: number | null = null;
+  let selFace: number | null = null;
+  let fusionMode = false;
+  let lastPhase = '';
+  $: if ($uiPhase !== lastPhase) {
+    lastPhase = $uiPhase;
+    selDie = null; selFace = null; fusionMode = false;
+  }
+  $: forgeBag = $forgeVersion >= 0 && $uiPhase === 'forge' ? (gm?.getForgeBagView() ?? []) : [];
+  $: tempraQ = $forgeVersion >= 0 && selDie !== null && selFace !== null
+    ? (gm?.quoteTempra(selDie, selFace) ?? null) : null;
+  const TRANS_TARGETS = [
+    { t: FaceType.MULTIPLIER, label: '→ ×MULT' },
+    { t: FaceType.RECURSIVE, label: '→ ↻' },
+    { t: FaceType.BUFF_STR, label: '→ +STR' }
+  ];
+  $: transQs = $forgeVersion >= 0 && selDie !== null && selFace !== null && gm
+    ? TRANS_TARGETS.map(tt => ({ ...tt, q: gm.quoteTrasmutazione(selDie ?? 0, selFace ?? 0, tt.t) }))
+    : [];
+  $: fusioneQ = $forgeVersion >= 0 && selDie !== null && forgeBag.length > 1
+    ? (gm?.quoteFusione(selDie, selDie === 0 ? 1 : 0) ?? null) : null;
+  $: riforgQ = $forgeVersion >= 0 && selDie !== null && $forgeSpecial
+    ? (gm?.quoteRiforgiatura(selDie) ?? null) : null;
+
+  function onForgeDieClick(di: number): void {
+    if (fusionMode && selDie !== null && di !== selDie) {
+      // Fusione: selDie assorbe, di viene sacrificato
+      gm?.applyForge({ kind: 'fusione', targetIndex: selDie, sacrificeIndex: di });
+      fusionMode = false; selDie = null; selFace = null;
+      return;
+    }
+    selDie = di; selFace = null; fusionMode = false;
+  }
+  function forgeTempra(): void {
+    if (selDie !== null && selFace !== null)
+      gm?.applyForge({ kind: 'tempra', dieIndex: selDie, faceIndex: selFace });
+  }
+  function forgeTrans(target: FaceType): void {
+    if (selDie !== null && selFace !== null)
+      gm?.applyForge({ kind: 'trasmutazione', dieIndex: selDie, faceIndex: selFace, target });
+  }
+  function forgeRiforgia(): void {
+    if (selDie !== null) gm?.applyForge({ kind: 'riforgiatura', dieIndex: selDie });
+  }
 
   onMount(() => {
     gm = new GameManager(canvas);
@@ -190,6 +237,93 @@
     </div>
   {/if}
 
+  <!-- ===== Overlay Bivio (specs §7 / §7.bis) ===== -->
+  {#if $uiPhase === 'crossroad'}
+    <div class="overlay">
+      <div class="overlay-box" class:royal={$crossroadSpecial}>
+        <h2>{$crossroadSpecial ? '✨ Bivio Dorato' : '⚖️ Il Bivio'}</h2>
+        {#if $rewardBanner}<p class="unlock">{$rewardBanner}</p>{/if}
+        <p class="hint-line">Scegli una porta: l'altra si chiuderà. 💰 {$goldView} oro</p>
+        <div class="doors">
+          <button class="door" class:golden={$crossroadSpecial} on:click={() => gm?.chooseDoor('shop')}>
+            <span class="icon">{$crossroadSpecial ? '👑' : '🛒'}</span>
+            <span class="label">{$crossroadSpecial ? 'Mercante Reale' : 'Il Mercante'}</span>
+            <span class="hint">{$crossroadSpecial ? 'Sconto 30% e offerta premium' : 'Stat, oggetti e dadi'}</span>
+          </button>
+          <button class="door" class:golden={$crossroadSpecial} on:click={() => gm?.chooseDoor('forge')}>
+            <span class="icon">🔨</span>
+            <span class="label">{$crossroadSpecial ? 'Gran Forgia' : 'La Forgia'}</span>
+            <span class="hint">{$crossroadSpecial ? '3 operazioni, Trasmutazione -50%' : 'Scolpisci le facce dei dadi'}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ===== Overlay Forgia (specs §9 / §9.bis) ===== -->
+  {#if $uiPhase === 'forge'}
+    <div class="overlay">
+      <div class="overlay-box forge-box" class:royal={$forgeSpecial}>
+        <h2>{$forgeSpecial ? '🔥 La Gran Forgia' : '🔨 La Forgia dei Dadi'}</h2>
+        <p class="hint-line">💰 {$goldView} oro — Operazioni rimaste: {$forgeOpsLeft}</p>
+        {#if fusionMode}
+          <p class="unlock">⚒️ Scegli il dado da SACRIFICARE (D{(selDie ?? 0) + 1} ne assorbirà la faccia migliore)</p>
+        {/if}
+        <div class="forge-dice">
+          {#each forgeBag as fdie, di}
+            <button class="forge-die" class:selected={selDie === di}
+              class:sacrifice={fusionMode && selDie !== di}
+              on:click={() => onForgeDieClick(di)}>
+              <span>{fdie.icon} D{di + 1}</span>
+              <span class="hint">{fdie.blueprintName ?? fdie.rarityName}</span>
+            </button>
+          {/each}
+        </div>
+        {#if selDie !== null && forgeBag[selDie]}
+          <div class="chips forge-chips">
+            {#each forgeBag[selDie].faces as chip, fi}
+              <button class="chip {chip.cssClass}" class:selected={selFace === fi}
+                on:click={() => { selFace = fi; fusionMode = false; }}>{chip.text}</button>
+            {/each}
+          </div>
+          <div class="services">
+            <button class="service" disabled={!tempraQ?.ok || $forgeOpsLeft === 0}
+              title={tempraQ?.reason ?? 'Seleziona una faccia'} on:click={forgeTempra}>
+              <span>🔥 Tempra</span>
+              {#if tempraQ}<span class="cost">💰 {tempraQ.cost}</span>{/if}
+              {#if tempraQ?.preview}<span class="hint">{tempraQ.preview}</span>{/if}
+            </button>
+            {#each transQs as tq (tq.label)}
+              <button class="service" disabled={!tq.q.ok || $forgeOpsLeft === 0}
+                title={tq.q.reason ?? tq.q.preview} on:click={() => forgeTrans(tq.t)}>
+                <span>⚗️ {tq.label}</span>
+                <span class="cost">💰 {tq.q.cost}</span>
+              </button>
+            {/each}
+            <button class="service" class:selected={fusionMode}
+              disabled={forgeBag.length < 2 || $forgeOpsLeft === 0}
+              title="Sacrifica un dado: questo ne eredita la faccia migliore e sale di rarità"
+              on:click={() => (fusionMode = !fusionMode)}>
+              <span>⚒️ Fusione</span>
+              {#if fusioneQ}<span class="cost">💰 {fusioneQ.cost}</span>{/if}
+            </button>
+            {#if $forgeSpecial}
+              <button class="service" disabled={!riforgQ?.ok || $forgeOpsLeft === 0}
+                title={riforgQ?.reason ?? riforgQ?.preview} on:click={forgeRiforgia}>
+                <span>🌋 Riforgiatura</span>
+                {#if riforgQ}<span class="cost">💰 {riforgQ.cost}</span>{/if}
+                {#if riforgQ?.preview}<span class="hint">{riforgQ.preview}</span>{/if}
+              </button>
+            {/if}
+          </div>
+        {:else}
+          <p class="hint-line">Seleziona un dado per vedere le sue facce</p>
+        {/if}
+        <button class="skill" on:click={() => void gm?.leaveForge()}>⚔️ Prossimo incontro</button>
+      </div>
+    </div>
+  {/if}
+
   <!-- ===== Overlay fine run / sconfitta ===== -->
   {#if $uiPhase === 'run-complete'}
     <div class="overlay">
@@ -308,4 +442,42 @@
   .offer:disabled { opacity: 0.4; cursor: default; }
   .cost.too-expensive { color: #ff5c5c; }
   .shop-box.royal { border-color: #ffd84c; box-shadow: 0 0 24px rgba(255, 216, 76, 0.25); }
+
+  /* ---- Bivio e Forgia ---- */
+  .hint-line { font-size: 12px; opacity: 0.85; margin: 0; }
+  .overlay-box.royal { border-color: #ffd84c; box-shadow: 0 0 24px rgba(255, 216, 76, 0.25); }
+  .doors { display: flex; gap: 14px; justify-content: center; }
+  .door {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 18px 22px; min-width: 170px; cursor: pointer; font-family: inherit;
+    background: #1f3d2a; border: 1px solid #4cc94c; border-radius: 10px; color: #e8e8f0;
+  }
+  .door .icon { font-size: 28px; }
+  .door .label { font-weight: bold; }
+  .door .hint { font-size: 10px; opacity: 0.75; }
+  .door.golden { background: #3d3016; border-color: #ffd84c; }
+  .door:hover { transform: translateY(-2px); }
+
+  .forge-box { min-width: 460px; max-width: 560px; }
+  .forge-dice { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .forge-die {
+    display: flex; flex-direction: column; gap: 2px; padding: 8px 12px;
+    background: #101014; border: 1px solid #444; border-radius: 8px;
+    color: #e8e8f0; cursor: pointer; font-family: inherit;
+  }
+  .forge-die.selected { border-color: #ffb84c; outline: 1px solid #ffb84c; }
+  .forge-die.sacrifice { border-color: #ff5c5c; animation: pulse 0.8s infinite alternate; }
+  @keyframes pulse { from { box-shadow: 0 0 2px #ff5c5c; } to { box-shadow: 0 0 12px #ff5c5c; } }
+  .forge-die .hint { font-size: 10px; opacity: 0.7; }
+  .forge-chips { justify-content: center; }
+  .services { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+  .service {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 6px 10px; font-size: 12px; cursor: pointer; font-family: inherit;
+    background: #3d1f4f; border: 1px solid #ff5c8a; border-radius: 8px; color: #ffd9e5;
+  }
+  .service:disabled { opacity: 0.35; cursor: default; }
+  .service.selected { outline: 2px solid #ffb84c; }
+  .service .cost { color: #ffd84c; font-size: 11px; }
+  .service .hint { font-size: 10px; opacity: 0.8; }
 </style>

@@ -17,6 +17,7 @@ import {
 import { DiceWorld } from '@graphics/DiceWorld';
 import { RunManager, BOSS_STAT_MULTIPLIER, CHAMPION_STAT_MULTIPLIER, freshRunState } from '@core/RunManager';
 import { Shop, ShopOffer } from '@core/Shop';
+import { Forge, ForgeOperation, ForgeContext } from '@core/Forge';
 import { SaveManager } from '@core/SaveManager';
 import { UNLOCKABLE_DICE, UNLOCK_BY_ACT, getBlueprint } from '@core/diceCatalog';
 import {
@@ -35,11 +36,17 @@ import {
   runLabel,
   shopOffers,
   shopSpecial,
+  crossroadSpecial,
+  forgeSpecial,
+  forgeOpsLeft,
+  forgeVersion,
   rewardBanner,
   pushLog,
   CombatantView,
   DieChip,
-  ShopOfferView
+  ShopOfferView,
+  ForgeQuoteView,
+  ForgeDieView
 } from './ui/stores';
 
 /* ============================================================
@@ -90,9 +97,16 @@ export class GameManager {
   /* ---- Meta-progressione (commit 11-13) ---- */
   public run = new RunManager();
   private readonly shop = new Shop();
+  private readonly forge = new Forge();
   private readonly saveMgr = new SaveManager();
   private unlocks: string[] = [];
   private currentOffers: ShopOffer[] = [];
+  /** Operazioni di forgia rimaste nella visita corrente */
+  private opsLeft = 0;
+  /** true = l'intermezzo corrente è speciale (post boss fight) */
+  private intermissionSpecial = false;
+  /** ACT_TRANSITION: dopo il Mercante Reale si apre la Gran Forgia */
+  private grandForgeQueued = false;
 
   constructor(canvas: HTMLCanvasElement) {
     this.diceWorld = new DiceWorld(canvas);
@@ -259,9 +273,10 @@ export class GameManager {
     this.run.addGold(reward);
     pushLog(`💰 Bottino: ${formatBigNumber(reward)} oro`);
 
-    // Le boss fight (Campione e Boss d'Atto) aprono l'intermezzo
-    // SPECIALE: Mercante Reale (sconto + offerta premium)
-    const wasBossFight = this.run.isBossFight;
+    // Le boss fight aprono gli intermezzi SPECIALI (specs §7.bis/§10):
+    // Campione -> bivio dorato; Boss d'Atto -> Mercante Reale + Gran Forgia
+    const wasChampion = this.run.isChampion;
+    const wasActBoss = this.run.isActBoss;
     const beatenAct = this.run.state.act;
     const result = this.run.advance();
 
@@ -287,7 +302,32 @@ export class GameManager {
     }
 
     this.autosave();
-    this.openShop(wasBossFight);
+
+    if (wasActBoss) {
+      // ACT_TRANSITION (specs §10): ENTRAMBI gli intermezzi speciali
+      // in sequenza — Mercante Reale, poi Gran Forgia
+      this.grandForgeQueued = true;
+      this.openShop(true);
+    } else {
+      // Bivio (specs §7): due porte, se ne sceglie UNA.
+      // Dorate dopo il Campione (§7.bis).
+      this.openCrossroad(wasChampion);
+    }
+  }
+
+  /* ---------------- Bivio (Intermission) ---------------- */
+
+  private openCrossroad(special: boolean): void {
+    this.intermissionSpecial = special;
+    crossroadSpecial.set(special);
+    this.refreshRunHeader();
+    uiPhase.set('crossroad');
+  }
+
+  /** Scelta della porta: la porta non scelta si chiude. */
+  public chooseDoor(door: 'shop' | 'forge'): void {
+    if (door === 'shop') this.openShop(this.intermissionSpecial);
+    else this.openForge(this.intermissionSpecial);
   }
 
   private toChip(face: DieFace): DieChip {
@@ -422,8 +462,106 @@ export class GameManager {
     this.autosave();
   }
 
-  /** Chiude lo shop e avvia l'incontro successivo della run */
+  /** Chiude lo shop. In ACT_TRANSITION la catena prosegue con
+   *  la Gran Forgia; altrimenti si va al prossimo incontro. */
   public leaveShop(): Promise<void> {
+    rewardBanner.set(null);
+    if (this.grandForgeQueued) {
+      this.grandForgeQueued = false;
+      this.openForge(true);
+      return Promise.resolve();
+    }
+    this.newBattle(this.run.level);
+    return this.start();
+  }
+
+  /* ---------------- Forgia ---------------- */
+
+  private forgeCtx(): ForgeContext {
+    return {
+      level: this.run.level,
+      purchases: this.run.state.purchases,
+      special: this.intermissionSpecial
+    };
+  }
+
+  private openForge(special: boolean): void {
+    this.intermissionSpecial = special;
+    this.opsLeft = this.forge.opsPerVisit(special);
+    forgeSpecial.set(special);
+    forgeOpsLeft.set(this.opsLeft);
+    forgeVersion.update(v => v + 1);
+    this.refreshRunHeader();
+    uiPhase.set('forge');
+  }
+
+  /** Vista della borsa per la UI della forgia */
+  public getForgeBagView(): ForgeDieView[] {
+    const RARITY_NAME = ['Comune', 'Non Comune', 'Raro', 'Epico', 'Leggendario'];
+    const RARITY_ICON = ['⚪', '🟢', '🔵', '🟣', '🟠'];
+    return this.bag.map(die => ({
+      icon: RARITY_ICON[die.rarity] ?? '⚪',
+      rarityName: RARITY_NAME[die.rarity] ?? '?',
+      blueprintName: die.blueprintId
+        ? (getBlueprint(die.blueprintId)?.name ?? null)
+        : null,
+      faces: die.faces.map(f => this.toChip(f)),
+      specialCount: die.faces.filter(f => f.type !== FaceType.NORMAL).length
+    }));
+  }
+
+  private toQuoteView(op: ForgeOperation): ForgeQuoteView {
+    const q = this.forge.quote(op, this.bag, this.forgeCtx());
+    const view: ForgeQuoteView = { ok: q.ok, cost: formatBigNumber(q.cost) };
+    if (q.reason !== undefined) view.reason = q.reason;
+    if (q.preview !== undefined) view.preview = q.preview;
+    return view;
+  }
+
+  public quoteTempra(dieIndex: number, faceIndex: number): ForgeQuoteView {
+    return this.toQuoteView({ kind: 'tempra', dieIndex, faceIndex });
+  }
+
+  public quoteTrasmutazione(dieIndex: number, faceIndex: number, target: FaceType): ForgeQuoteView {
+    return this.toQuoteView({ kind: 'trasmutazione', dieIndex, faceIndex, target });
+  }
+
+  public quoteFusione(targetIndex: number, sacrificeIndex: number): ForgeQuoteView {
+    return this.toQuoteView({ kind: 'fusione', targetIndex, sacrificeIndex });
+  }
+
+  public quoteRiforgiatura(dieIndex: number): ForgeQuoteView {
+    return this.toQuoteView({ kind: 'riforgiatura', dieIndex });
+  }
+
+  /** Esegue un'operazione di forgia: preventivo -> addebito ->
+   *  mutazione -> autosave. Le texture 3D si rigenerano da sole
+   *  al prossimo lancio (DieTextureSet per-throw). */
+  public applyForge(op: ForgeOperation): void {
+    if (this.opsLeft <= 0) {
+      pushLog('✋ Operazioni esaurite per questa visita');
+      return;
+    }
+    const q = this.forge.quote(op, this.bag, this.forgeCtx());
+    if (!q.ok) {
+      pushLog(`✋ ${q.reason ?? 'Operazione non valida'}`);
+      return;
+    }
+    if (!this.run.spendGold(q.cost)) {
+      pushLog('✋ Oro insufficiente');
+      return;
+    }
+    this.forge.apply(op, this.bag);
+    this.opsLeft--;
+    forgeOpsLeft.set(this.opsLeft);
+    forgeVersion.update(v => v + 1);
+    this.refreshRunHeader();
+    this.autosave();
+    pushLog(`🔨 Forgia: ${q.preview ?? 'operazione completata'}`);
+  }
+
+  /** Chiude la forgia e avvia l'incontro successivo */
+  public leaveForge(): Promise<void> {
     rewardBanner.set(null);
     this.newBattle(this.run.level);
     return this.start();

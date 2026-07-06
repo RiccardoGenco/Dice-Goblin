@@ -59,14 +59,35 @@ export interface ShopOfferView {
   affordable: boolean;
 }
 
-/** 'battle' = combattimento; 'shop' = negozio tra un incontro e
- *  l'altro; 'run-complete' = terzo boss sconfitto. */
-export const uiPhase = writable<'battle' | 'shop' | 'run-complete'>('battle');
+/** 'battle' = combattimento; 'crossroad' = bivio a due porte;
+ *  'shop'/'forge' = intermezzi; 'run-complete' = terzo boss. */
+export const uiPhase = writable<'battle' | 'crossroad' | 'shop' | 'forge' | 'run-complete'>('battle');
 export const goldView = writable('0');
 export const runLabel = writable('Atto 1 — 1/10');
 export const shopOffers = writable<ShopOfferView[]>([]);
 /** true dopo una boss fight: 👑 Mercante Reale (sconto + premium) */
 export const shopSpecial = writable(false);
+
+/* ---- Bivio e Forgia (commit 17) ---- */
+export interface ForgeQuoteView {
+  ok: boolean;
+  cost: string;
+  reason?: string;
+  preview?: string;
+}
+export interface ForgeDieView {
+  icon: string;
+  rarityName: string;
+  blueprintName: string | null;
+  faces: DieChip[];
+  specialCount: number;
+}
+/** true = porte dorate (dopo Campione/Boss) */
+export const crossroadSpecial = writable(false);
+export const forgeSpecial = writable(false);
+export const forgeOpsLeft = writable(0);
+/** bump per ricalcolare viste e preventivi della forgia */
+export const forgeVersion = writable(0);
 export const rewardBanner = writable<string | null>(null);
 
 export function pushLog(line: string): void {
