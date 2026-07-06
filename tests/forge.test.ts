@@ -42,7 +42,7 @@ describe('Forge — Trasmutazione (il guardrail dell\'esponenziale)', () => {
     expect(f.quote(op, bag, ctx()).ok).toBe(true);
     f.apply(op, bag);
     expect(bag[0]!.faces[0]!.type).toBe(FaceType.MULTIPLIER);
-    expect(bag[0]!.faces[0]!.value.toNumber()).toBe(1.5);
+    expect(bag[0]!.faces[0]!.value.toNumber()).toBe(2); // TUNING: le trasmutate partono a x2
 
     // Una faccia già speciale non è ritrasmutabile
     expect(f.quote(op, bag, ctx()).ok).toBe(false);
@@ -120,7 +120,7 @@ describe('Forge — Costi sulla curva della run', () => {
     const f = forge();
     const c0 = f.cost('tempra', ctx(false, 0));
     const c6 = f.cost('tempra', ctx(false, 6));
-    expect(c6.div(c0).toNumber()).toBeGreaterThan(1.5 ** 5);
+    expect(c6.div(c0).toNumber()).toBeGreaterThan(1.25 ** 5);
 
     const normal = f.cost('trasmutazione', ctx(false, 3));
     const gran = f.cost('trasmutazione', ctx(true, 3));

@@ -31,7 +31,7 @@ export type ForgeServiceKind = 'tempra' | 'trasmutazione' | 'fusione' | 'riforgi
 
 const BASE_COST: Record<ForgeServiceKind, number> = {
   tempra: 30,
-  trasmutazione: 90, // dimezzata nella Gran Forgia
+  trasmutazione: 40, // TUNING: 90 -> 40; dimezzata nella Gran Forgia
   fusione: 60,
   riforgiatura: 70 // esclusiva della Gran Forgia
 };
@@ -60,7 +60,7 @@ export interface ForgeQuote {
 
 /** Valori iniziali delle facce appena trasmutate */
 const TRANSMUTE_VALUE: Partial<Record<FaceType, number>> = {
-  [FaceType.MULTIPLIER]: 1.5,
+  [FaceType.MULTIPLIER]: 2, // TUNING: 1.5 -> 2 (leva esponenziale reale)
   [FaceType.RECURSIVE]: 1,
   [FaceType.BUFF_STR]: 2
 };
@@ -149,7 +149,7 @@ export class Forge {
       return this.reject('trasmutazione', ctx, `Cap raggiunto: max ${MAX_SPECIAL_FACES} facce speciali per dado`);
     }
     const label =
-      op.target === FaceType.MULTIPLIER ? '×1.5' :
+      op.target === FaceType.MULTIPLIER ? '×2' :
       op.target === FaceType.RECURSIVE ? '↻' : '+STR 2';
     return {
       ok: true,

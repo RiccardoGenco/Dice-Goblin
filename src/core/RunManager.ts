@@ -15,12 +15,12 @@ export const ENCOUNTERS_PER_ACT = 10;
  *  il 10° è il Boss d'Atto. */
 export const BOSS_INTERVAL = 5;
 export const TOTAL_ACTS = 3;
-export const GOLD_REWARD_BASE = 10;
+export const GOLD_REWARD_BASE = 12; // TUNING: 10 -> 12
 export const CHAMPION_GOLD_MULTIPLIER = 2;
 export const BOSS_GOLD_MULTIPLIER = 3;
 /** Amplificazione delle stat nemiche nelle boss fight */
-export const CHAMPION_STAT_MULTIPLIER = 1.8;
-export const BOSS_STAT_MULTIPLIER = 2.5;
+export const CHAMPION_STAT_MULTIPLIER = 1.7; // TUNING: 1.8 -> 1.7
+export const BOSS_STAT_MULTIPLIER = 2.2; // TUNING: 2.5 -> 2.2
 
 export interface RunState {
   act: number;       // 1..TOTAL_ACTS
@@ -75,7 +75,7 @@ export class RunManager {
    *  Le boss fight sono i picchi economici: Campione x2, Boss x3
    *  — in sincrono con lo sconto del Mercante Reale. */
   public goldReward(): Decimal {
-    const growth = new Decimal(BALANCE.SHOP_COST_GROWTH).pow(this.level);
+    const growth = new Decimal(BALANCE.GOLD_REWARD_GROWTH).pow(this.level);
     const base = new Decimal(GOLD_REWARD_BASE).times(growth);
     if (this.isActBoss) return base.times(BOSS_GOLD_MULTIPLIER);
     if (this.isChampion) return base.times(CHAMPION_GOLD_MULTIPLIER);

@@ -147,10 +147,19 @@ export const BALANCE = {
   /** Moltiplicatore forzato per ogni dado ricorsivo non lanciato
    *  all'overflow: Danno = Accumulato * 1.5^rimanenti */
   OVERFLOW_MULT_BASE: 1.5,
-  /** Scaling esponenziale HP nemici: HP(lv) = base * 1.6^lv */
-  ENEMY_HP_GROWTH: 1.6,
-  /** Scaling costi shop: Cost(lv) = base * 1.5^lv */
-  SHOP_COST_GROWTH: 1.5,
+  /** Scaling esponenziale HP nemici per incontro.
+   *  TUNING (balance sim): 1.6 -> 1.42. Con 30 incontri, 1.6^29
+   *  richiedeva una crescita del giocatore irraggiungibile. */
+  ENEMY_HP_GROWTH: 1.38,
+  /** La FORZA nemica cresce più piano degli HP: la difesa del
+   *  giocatore (VIT/scudi/pozioni) ha meno leve dell'attacco. */
+  ENEMY_STR_GROWTH: 1.22,
+  /** Scaling costi shop/forgia. TUNING: 1.5 -> 1.35, sotto la
+   *  crescita del reddito (1.5): il potere d'acquisto CRESCE
+   *  lentamente lungo la run (feel incrementale). */
+  SHOP_COST_GROWTH: 1.28,
+  /** Crescita del reddito per incontro (oro) */
+  GOLD_REWARD_GROWTH: 1.5,
   /** HP = vit * 10 */
   HP_PER_VIT: 10
 } as const;

@@ -10,7 +10,7 @@ import { Shop } from '../src/core/Shop';
 import { SaveManager, memoryStorage, serializeDie, hydrateDie } from '../src/core/SaveManager';
 import { GoblinDie } from '../src/core/GoblinDie';
 import { UNLOCKABLE_DICE, createDieFromBlueprint } from '../src/core/diceCatalog';
-import { CombatantStats, FaceType, Rarity, seededRNG } from '../src/core/types';
+import { BALANCE, CombatantStats, FaceType, Rarity, seededRNG } from '../src/core/types';
 
 describe('RunManager — struttura ad Atti (MVP §1)', () => {
   it('il level globale è continuo tra gli Atti', () => {
@@ -91,12 +91,12 @@ describe('Shop — economia su curva esponenziale (GDD §4.2)', () => {
     lck: 0
   });
 
-  it('i costi crescono di 1.5^level', () => {
+  it('i costi crescono sulla curva SHOP_COST_GROWTH', () => {
     const shop = new Shop(seededRNG(1));
     const bag = [new GoblinDie(Rarity.COMUNE, undefined, seededRNG(1))];
     const cheap = shop.generateOffers(0, 0, bag, [])[0]!;
     const dear = shop.generateOffers(8, 0, bag, [])[0]!;
-    expect(dear.cost.div(cheap.cost).toNumber()).toBeGreaterThan(1.5 ** 7);
+    expect(dear.cost.div(cheap.cost).toNumber()).toBeGreaterThan(BALANCE.SHOP_COST_GROWTH ** 7);
   });
 
   it('gli acquisti ripetuti rincarano le offerte (+25% composto)', () => {

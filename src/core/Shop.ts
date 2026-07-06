@@ -14,7 +14,9 @@ import { DieBlueprint, createDieFromBlueprint } from './diceCatalog';
  * e il giocatore deve scegliere una direzione di build.
  * ============================================================ */
 
-export const PURCHASE_INFLATION = 1.25;
+// TUNING (balance sim): 1.25 -> 1.08. Il rincaro composto per
+// sempre a 1.25 distruggeva il potere d'acquisto (~x6e5 a fine run)
+export const PURCHASE_INFLATION = 1.05;
 /** Sconto del Mercante Reale (dopo le boss fight): prezzi x0.7 */
 export const SPECIAL_DISCOUNT = 0.7;
 

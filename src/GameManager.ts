@@ -165,16 +165,17 @@ export class GameManager {
        HP = vit*10 e vit_nemica = base * 1.6^level
        → gli HP nemici seguono esattamente HPbase * 1.6^level.
        Boss fight ogni 5 incontri: Campione (5°) x1.8, Boss (10°) x2.5. */
-    const growth = new Decimal(BALANCE.ENEMY_HP_GROWTH).pow(level);
+    const hpGrowth = new Decimal(BALANCE.ENEMY_HP_GROWTH).pow(level);
+    const strGrowth = new Decimal(BALANCE.ENEMY_STR_GROWTH).pow(level);
     const bossMult = this.run.isActBoss
       ? BOSS_STAT_MULTIPLIER
       : this.run.isChampion
         ? CHAMPION_STAT_MULTIPLIER
         : 1;
     const enemyStats: CombatantStats = {
-      str: new Decimal(3).times(growth).times(bossMult),
-      int: new Decimal(1).times(growth).times(bossMult),
-      vit: new Decimal(8).times(growth).times(bossMult),
+      str: new Decimal(3).times(strGrowth).times(bossMult),
+      int: new Decimal(1).times(strGrowth).times(bossMult),
+      vit: new Decimal(8).times(hpGrowth).times(bossMult),
       lck: 0
     };
 

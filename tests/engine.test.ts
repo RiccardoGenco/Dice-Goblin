@@ -91,10 +91,11 @@ describe('Visual Blocking Callback (GDD §5)', () => {
 });
 
 describe('Curve di progressione esponenziale (GDD §4.2)', () => {
-  it('HP nemici: base * 1.6^level', () => {
-    expect(scaleEnemyHp(new Decimal(100), 10).toNumber()).toBeCloseTo(100 * 1.6 ** 10);
+  it('HP nemici: base * growth^level', () => {
+    expect(scaleEnemyHp(new Decimal(100), 10).toNumber())
+      .toBeCloseTo(100 * BALANCE.ENEMY_HP_GROWTH ** 10);
   });
-  it('costi shop crescono più lentamente degli HP (1.5 < 1.6)', () => {
+  it('costi shop crescono più lentamente degli HP nemici', () => {
     const hp = scaleEnemyHp(new Decimal(100), 50);
     const cost = scaleShopCost(new Decimal(100), 50);
     expect(hp.gt(cost)).toBe(true);
