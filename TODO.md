@@ -30,15 +30,16 @@ Legenda: 🔴 gameplay core mancante · 🟡 meta/UX · 🟢 polish · 🔵 tecn
 ## 🟡 Meta e UX (dalle specs, non bloccanti per giocare)
 
 - [ ] **GameFlow.ts**: FSM di alto livello esplicita (oggi il flusso è implicito in GameManager) — specs §0
+- [ ] **Setup Run in 2 passi**: Dote (dado) + Corredo (draft equip 1-di-3) — ux_specs §3
+- [ ] **Menu di Pausa** stato-consapevole (⏸/ESC ovunque, Salva-ed-esci vs Abbandona) — ux_specs §4
+- [ ] **Opzioni persistenti** (velocità animazioni ×1/×2/istantanea, volumi, formato numeri) — ux_specs §11
 - [ ] **MAIN_MENU**: Continua / Nuova Run (con conferma sovrascrittura) / Collezione / Opzioni — specs §2
 - [ ] **Collezione**: pool dadi con sbloccati evidenziati e silhouette dei mancanti
-- [ ] **Dote di partenza**: scelta di 1 dado sbloccato come 6° dado iniziale — specs §3.5
 - [ ] **Oggetti equip a pagamento**: spostarli nello shop (oggi gratuiti nella HUD) — specs §8.3
   - [ ] Con 5 slot pieni l'acquisto chiede quale oggetto scartare
 - [ ] **RunStats + RECAP**: danno max in un turno, overflow count, oro raccolto/speso, op. di forgia — specs §11
-- [ ] **SavedRun v2**: hp corrente, runStats, contatore forgia (retro-compatibile via campo `version`)
+- [ ] **SavedRun v2**: hp corrente, runStats, stato intermezzo (offerte/operazioni residue) — retro-compatibile via `version`
 - [ ] **ENCOUNTER_INTRO**: presentazione nemico skippabile, nomi propri per i boss — specs §4
-- [ ] **Opzioni**: velocità animazioni dadi (×1/×2/istantanea), volume, reset meta con doppia conferma
 
 ## 🟢 Polish
 
@@ -65,7 +66,8 @@ Legenda: 🔴 gameplay core mancante · 🟡 meta/UX · 🟢 polish · 🔵 tecn
 
 1. ~~**16** — Forge.ts + test~~ ✅
 2. ~~**17** — Bivio Intermission + Gran Forgia + UI forgia~~ ✅
-3. **18** — HP persistenti + cura ai boss + SavedRun v2
-4. **19** — Equip nello shop + dote di partenza
-5. **20** — MAIN_MENU + Collezione + RunStats/RECAP
-6. **21+** — Polish (FX, audio, mobile) e deploy
+3. **18** — HP persistenti + cura ai boss + SavedRun v2 (con stato intermezzo)
+4. **19** — MAIN_MENU (3 stati) + Setup Run (Dote + Corredo) + Collezione
+5. **20** — Menu di Pausa + Opzioni persistenti + ESC handling
+6. **21** — RECAP + RunStats + celebrazioni skippabili
+7. **22+** — Polish del turno (anteprima danno, toast oro), FX, audio, mobile, deploy
