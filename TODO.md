@@ -53,7 +53,9 @@ Legenda: 🔴 gameplay core mancante · 🟡 meta/UX · 🟢 polish · 🔵 tecn
 
 ## 🔵 Tecnico e rilascio
 
-- [ ] Bilanciamento: playtest della curva 1.6^lv su 30 incontri (il muro di metà Atto 2 è il punto critico)
+- [x] Bilanciamento: prima passata con balance sim (curve ritarate, vedi balance_specs.md)
+- [ ] Bilanciamento: playtest umano di conferma (il bot non usa equip né skill)
+- [ ] Sink per l'oro di fine run (rilanci offerte, riforgiature ripetibili)
 - [ ] Test d'integrazione del flusso completo (vittoria → shop → incontro → boss → sblocco)
 - [ ] Code splitting del bundle (warning Vite: chunk > 500KB, separare three/cannon)
 - [ ] QA manuale browser: checklist su Chrome/Firefox/Safari (WebGL, localStorage, resize)
@@ -66,7 +68,7 @@ Legenda: 🔴 gameplay core mancante · 🟡 meta/UX · 🟢 polish · 🔵 tecn
 
 1. ~~**16** — Forge.ts + test~~ ✅
 2. ~~**17** — Bivio Intermission + Gran Forgia + UI forgia~~ ✅
-3. **18** — HP persistenti + cura ai boss + SavedRun v2 (con stato intermezzo)
+3. **18** — HP persistenti + cura ai boss + pozioni (Grog/Elisir) + SavedRun v2 (con stato intermezzo)
 4. **19** — MAIN_MENU (3 stati) + Setup Run (Dote + Corredo) + Collezione
 5. **20** — Menu di Pausa + Opzioni persistenti + ESC handling
 6. **21** — RECAP + RunStats + celebrazioni skippabili
