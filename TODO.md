@@ -41,6 +41,14 @@ Legenda: 🔴 gameplay core mancante · 🟡 meta/UX · 🟢 polish · 🔵 tecn
 - [ ] **SavedRun v2**: hp corrente, runStats, stato intermezzo (offerte/operazioni residue) — retro-compatibile via `version`
 - [ ] **ENCOUNTER_INTRO**: presentazione nemico skippabile, nomi propri per i boss — specs §4
 
+## 🟠 Contenuti (da content_specs.md)
+
+- [ ] **6 classi nemiche** (Guerriero/Mago/Paladino/Chierico/Bardo/Ladro): moltiplicatori + varianza, pattern script deterministici, nuovi IntentType (PIERCE, CHARGE/BURST, ATTACK_SHIELD, HEAL, DEBUFF, STEAL, MULTI_ATTACK)
+- [ ] **Boss con meccaniche firma**: Baldovino (Guerriero), Ildegonda (Chierico), Zoltan (Mago); Campioni = classe casuale ×1.7 con nome generato
+- [ ] **Oggetti 6 → 18** (inclusi i 3 contro-oggetti anti-classe)
+- [ ] **Dadi pool 3 → 6** con sblocchi a imprese (Berserker/Caos/Piombato)
+- [ ] **Balance sim per classe** (guardrail TTK, Paladino caso critico)
+
 ## 🟢 Polish
 
 - [ ] FX: glow shader per rarità dei dadi, particellari sull'impatto, screen-shake sull'overflow
@@ -64,12 +72,16 @@ Legenda: 🔴 gameplay core mancante · 🟡 meta/UX · 🟢 polish · 🔵 tecn
 
 ---
 
-## Ordine consigliato (prossimi commit)
+## Ordine consigliato (prossimi commit — vedi content_specs.md §6)
 
 1. ~~**16** — Forge.ts + test~~ ✅
-2. ~~**17** — Bivio Intermission + Gran Forgia + UI forgia~~ ✅
-3. **18** — HP persistenti + cura ai boss + pozioni (Grog/Elisir) + SavedRun v2 (con stato intermezzo)
-4. **19** — MAIN_MENU (3 stati) + Setup Run (Dote + Corredo) + Collezione
-5. **20** — Menu di Pausa + Opzioni persistenti + ESC handling
-6. **21** — RECAP + RunStats + celebrazioni skippabili
-7. **22+** — Polish del turno (anteprima danno, toast oro), FX, audio, mobile, deploy
+2. ~~**17** — Bivio + Gran Forgia + UI forgia~~ ✅
+3. **18** — HP persistenti + pozioni + cura ai Boss + SavedRun v2
+4. **19** — Sistema classi nemiche + nuovi IntentType + balance sim per classe
+5. **20** — Boss con firme + Campioni + SVG procedurali nemici
+6. **21** — Oggetti (18) + dadi (6) + imprese
+7. **22** — Menu + Setup Run + Collezione
+8. **23** — Pausa + Opzioni
+9. **24** — RECAP + RunStats
+10. **25** — Feel (SFX sintetizzati, glitch, shake)
+11. **26** — Release (CI, code splitting, deploy)
