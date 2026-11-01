@@ -111,12 +111,30 @@ export const enemyInfo = writable<EnemyInfo>({
 /** Effetto scenico puntuale: il palco lo trasforma in animazioni e numeri */
 export interface StageFx {
   id: number;
-  target: 'player' | 'enemy';
-  kind: 'hit' | 'shield' | 'poison';
+  /** 'center' = effetti a tutto palco (moltiplicatore, overflow) */
+  target: 'player' | 'enemy' | 'center';
+  kind: 'hit' | 'shield' | 'poison' | 'mult' | 'overflow';
   text: string;
+  /** intensità: log10 del valore per hit/shield, tier 0-4 per mult/overflow */
+  power: number;
 }
 export const stageFx = writable<StageFx | null>(null);
 let fxCounter = 0;
-export function emitFx(target: StageFx['target'], kind: StageFx['kind'], text: string): void {
-  stageFx.set({ id: ++fxCounter, target, kind, text });
+export function emitFx(
+  target: StageFx['target'], kind: StageFx['kind'], text: string, power = 0
+): void {
+  stageFx.set({ id: ++fxCounter, target, kind, text, power });
 }
+
+/* ---- Catena di dadi: anteprima per il giocatore ---- */
+export interface ChainView {
+  mult: string;      // prodotto dei moltiplicatori, es. "12"
+  tier: number;      // 0-4, intensità scenica
+  power: string;     // danno con skill ×1 (equip e overflow inclusi)
+  multCount: number;
+}
+export const chainView = writable<ChainView | null>(null);
+/** Anteprima dell'effetto di ogni skill (id numerico -> testo) */
+export const skillPreview = writable<Record<number, string>>({});
+/** Si incrementa a ogni nuovo lancio: ri-innesca le animazioni dei chip */
+export const rollNonce = writable(0);

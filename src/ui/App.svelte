@@ -9,7 +9,8 @@
     playerView, enemyView, intentView, battleState, rolledChips,
     overflowActive, uiMode, battleResult, logLines, equipVersion,
     uiPhase, goldView, runLabel, shopOffers, shopSpecial, rewardBanner,
-    crossroadSpecial, forgeSpecial, forgeOpsLeft, forgeVersion
+    crossroadSpecial, forgeSpecial, forgeOpsLeft, forgeVersion,
+    chainView, skillPreview, rollNonce
   } from './stores';
 
   let canvas: HTMLCanvasElement;
@@ -113,27 +114,30 @@
     <button class="mini" on:click={() => void gm?.newRun()}>🔄 Nuova Run</button>
   </section>
 
-  <!-- ===== Palco di combattimento: sprite, HP, intento, effetti ===== -->
-  <Stage />
-
-  <!-- ===== Arena 3D (Canvas Layer, GDD §6.2) ===== -->
-  <div class="arena-wrap" class:overflow-glitch={$overflowActive}>
-    <canvas bind:this={canvas} class="arena"></canvas>
-    {#if $overflowActive}
-      <div class="overflow-banner">⚠️ OVERFLOW DETECTED ⚠️ — GLITCHING...</div>
-    {/if}
-  </div>
+  <!-- ===== Palco di combattimento: sprite, HP, intento, effetti e dadi 3D ===== -->
+  <Stage>
+    <canvas slot="overlay" bind:this={canvas} class="arena"></canvas>
+  </Stage>
 
   <!-- ===== Chip dei dadi lanciati (selezionabili in reroll) ===== -->
   <section class="chips">
-    {#each $rolledChips as chip, i}
-      <button
-        class="chip {chip.cssClass}"
-        class:selected={selectedChips.includes(i)}
-        class:selectable={$uiMode === 'reroll'}
-        on:click={() => toggleChip(i)}
-      >{chip.text}</button>
-    {/each}
+    {#key $rollNonce}
+      {#each $rolledChips as chip, i}
+        <button
+          class="chip {chip.cssClass}"
+          style="--i:{i}"
+          class:selected={selectedChips.includes(i)}
+          class:selectable={$uiMode === 'reroll'}
+          on:click={() => toggleChip(i)}
+        >{chip.text}</button>
+      {/each}
+    {/key}
+    {#if $chainView && $battleState === BattleState.WAIT_PLAYER_ACTION}
+      <span class="formula" class:hot={$chainView.tier >= 2}>
+        {#if $chainView.multCount > 0}<span class="f-mult">×{$chainView.mult}</span>{/if}
+        <span class="f-pow">Potenza <b>{$chainView.power}</b></span>
+      </span>
+    {/if}
     {#if $uiMode === 'reroll'}
       <span class="reroll-hint">
         Scegli fino a 2 dadi da rilanciare ({selectedChips.length}/2)
@@ -151,6 +155,7 @@
         <button class="skill" disabled={!canAct} on:click={() => useSkill(s.id)}>
           <span class="icon">{s.icon}</span>
           <span class="label">{SKILLS[s.id].name}</span>
+          <span class="preview">{$skillPreview[s.id] ?? '…'}</span>
           <span class="hint">{s.hint}</span>
         </button>
       {/each}
@@ -340,26 +345,22 @@
   .enemy-fill { background: linear-gradient(90deg, #ff5c5c, #ff9b5c); }
   .player-fill { background: linear-gradient(90deg, #4cc94c, #7dff9b); }
 
-  .arena-wrap { position: relative; }
-  .arena { display: block; width: 100%; height: 260px; background: #101014; border-radius: 8px; }
-  .overflow-glitch .arena { animation: glitch 0.12s infinite; }
-  .overflow-banner {
-    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-    color: #ff5c8a; font-weight: bold; animation: glitch 0.1s infinite;
-  }
-  @keyframes glitch {
-    0% { filter: hue-rotate(0deg); transform: translate(0); }
-    50% { filter: hue-rotate(90deg); transform: translate(1px, -1px); }
-    100% { filter: hue-rotate(0deg); transform: translate(-1px, 1px); }
-  }
-
   .chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 30px; align-items: center; }
-  .chip { border-radius: 6px; padding: 3px 10px; border: 1px solid #444; background: #2b2b33; color: #e8e8f0; }
-  .chip.multiplier { border-color: #ff5c8a; color: #ff5c8a; }
+  .chip {
+    border-radius: 6px; padding: 3px 10px; border: 1px solid #444; background: #2b2b33; color: #e8e8f0;
+    font-family: inherit; font-size: 14px;
+    animation: chip-in 0.4s cubic-bezier(.2,1.5,.4,1) both; animation-delay: calc(var(--i) * 70ms);
+  }
+  @keyframes chip-in { from { transform: translateY(8px) scale(0.6); opacity: 0; } to { transform: none; opacity: 1; } }
+  .chip.multiplier { border-color: #ff5c8a; color: #ff5c8a; font-weight: bold; box-shadow: 0 0 8px rgba(255,92,138,0.55); }
   .chip.buff { border-color: #7dff9b; color: #7dff9b; }
   .chip.recursive { border-color: #5cd0ff; color: #5cd0ff; }
   .chip.selectable { cursor: pointer; }
   .chip.selected { outline: 2px solid #ffb84c; }
+  .formula { margin-left: auto; display: flex; gap: 12px; align-items: baseline; font-size: 13px; }
+  .f-mult { color: #ff5c8a; font-weight: 900; font-size: 18px; text-shadow: 0 0 8px rgba(255,92,138,0.6); }
+  .formula.hot .f-mult { font-size: 24px; color: #ffb84c; text-shadow: 0 0 12px rgba(255,150,0,0.8); }
+  .f-pow b { color: #ffd84c; font-size: 16px; }
   .reroll-hint { font-size: 12px; color: #ffb84c; display: flex; gap: 6px; align-items: center; }
   .mini { font-size: 11px; padding: 2px 8px; cursor: pointer; background: #33333f; color: inherit; border: 1px solid #555; border-radius: 4px; }
 
@@ -372,7 +373,8 @@
   .skill:disabled { opacity: 0.35; cursor: default; }
   .skill .icon { font-size: 20px; }
   .skill .label { font-size: 12px; font-weight: bold; }
-  .skill .hint { font-size: 10px; opacity: 0.8; }
+  .skill .preview { font-size: 14px; font-weight: 900; color: #ffd84c; margin-top: 2px; }
+  .skill .hint { font-size: 10px; opacity: 0.7; }
 
   .equip-row { display: flex; justify-content: space-between; margin-top: 10px; gap: 12px; }
   .slots, .inventory { display: flex; gap: 6px; }

@@ -21,6 +21,8 @@ const DIE_SIZE = 1;
 const ARENA_HALF = 5; // semi-larghezza dell'arena
 /** Tempo massimo di un lancio prima del settle forzato (anti-softlock) */
 const ROLL_TIMEOUT_MS = 4000;
+/** Altezza del punto mirato dalla camera: più alto = arena più in basso */
+const CAMERA_TARGET_Y = 2.6;
 
 interface ActiveDie {
   mesh: THREE.Mesh;
@@ -50,6 +52,9 @@ export class DiceWorld {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+    // Ombre morbide: i dadi "poggiano" sul pavimento del palco 2D sotto
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.camera = new THREE.PerspectiveCamera(
       45,
@@ -58,18 +63,25 @@ export class DiceWorld {
       100
     );
     this.camera.position.set(0, 9, 7);
-    this.camera.lookAt(0, 0, 0);
+    // Il punto mirato sta sopra l'arena: i dadi cadono nella parte bassa
+    // dell'inquadratura, sul pavimento del palco
+    this.camera.lookAt(0, CAMERA_TARGET_Y, 0);
 
     this.scene.add(new THREE.AmbientLight(0xffffff, 0.6));
     const key = new THREE.DirectionalLight(0xffffff, 1.4);
     key.position.set(4, 10, 6);
+    key.castShadow = true;
+    key.shadow.mapSize.set(1024, 1024);
+    Object.assign(key.shadow.camera, { left: -8, right: 8, top: 8, bottom: -8, near: 1, far: 30 });
     this.scene.add(key);
 
     // Pavimento visivo
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(ARENA_HALF * 2, ARENA_HALF * 2),
-      new THREE.MeshStandardMaterial({ color: 0x1a4a2e, roughness: 0.9 })
+      // Pavimento trasparente: si vede solo l'ombra dei dadi sul palco
+      new THREE.ShadowMaterial({ opacity: 0.45 })
     );
+    floor.receiveShadow = true;
     floor.rotation.x = -Math.PI / 2;
     this.scene.add(floor);
 
@@ -121,6 +133,7 @@ export class DiceWorld {
         new THREE.BoxGeometry(DIE_SIZE, DIE_SIZE, DIE_SIZE),
         textures.materials
       );
+      mesh.castShadow = true;
       this.scene.add(mesh);
 
       // Corpo rigido con spawn sfalsato: niente sovrapposizioni

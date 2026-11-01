@@ -7,7 +7,11 @@
     overflowActive, actLevel
   } from './stores';
 
-  interface Floater { key: number; side: 'player' | 'enemy'; kind: string; text: string; dx: number }
+  interface Floater { key: number; side: 'player' | 'enemy'; kind: string; text: string; dx: number; fs: number }
+  interface Burst { key: number; kind: 'mult' | 'overflow'; text: string; tier: number }
+  let burst: Burst | null = null;
+  let shaking = false;
+  let flashKey = 0;
   let floaters: Floater[] = [];
   let playerAnim = '';
   let enemyAnim = '';
@@ -22,9 +26,22 @@
   const unsub = stageFx.subscribe(fx => {
     if (!fx || fx.id === lastId) return;
     lastId = fx.id;
-    const f: Floater = { key: fx.id, side: fx.target, kind: fx.kind, text: fx.text, dx: (fx.id % 5 - 2) * 10 };
+
+    // Effetti a tutto palco: moltiplicatore della catena e overflow
+    if (fx.target === 'center') {
+      burst = { key: fx.id, kind: fx.kind as Burst['kind'], text: fx.text, tier: fx.power };
+      later(() => { if (burst?.key === fx.id) burst = null; }, fx.kind === 'overflow' ? 2400 : 1500);
+      flashKey = fx.id;
+      shake(fx.kind === 'overflow' ? 900 : fx.power >= 3 ? 450 : 0);
+      return;
+    }
+
+    // dimensione del numero: cresce con l'ordine di grandezza del danno
+    const fs = Math.round(24 + Math.min(34, fx.power * 6));
+    const f: Floater = { key: fx.id, side: fx.target, kind: fx.kind, text: fx.text, dx: (fx.id % 5 - 2) * 10, fs };
     floaters = [...floaters, f];
     later(() => { floaters = floaters.filter(x => x.key !== f.key); }, 1500);
+    if (fx.kind === 'hit' && fx.power >= 2.5) shake(320); // colpo pesante
 
     if (fx.kind === 'hit') {
       // chi colpisce scatta in avanti, chi subisce lampeggia
@@ -37,6 +54,11 @@
       setAnim(fx.target, 'hurt');
     }
   });
+  function shake(ms: number): void {
+    if (ms <= 0) return;
+    shaking = true;
+    later(() => { shaking = false; }, ms);
+  }
   function setAnim(who: 'player' | 'enemy', a: string): void {
     if (who === 'player') playerAnim = a; else enemyAnim = a;
     later(() => { if (who === 'player') playerAnim = ''; else enemyAnim = ''; }, 420);
@@ -56,7 +78,7 @@
   $: lost = $battleResult === 'defeat';
 </script>
 
-<section class="stage act{$actLevel}" class:glitch={$overflowActive} aria-label="Campo di battaglia">
+<section class="stage act{$actLevel}" class:shake={shaking} aria-label="Campo di battaglia">
   <div class="layer far"></div>
   <div class="layer fog"></div>
   <div class="layer near"></div>
@@ -110,15 +132,34 @@
     <div class="shadow" style="width:150px"></div>
   </div>
 
+  <!-- ===== Dadi 3D: il canvas del GameManager vive sopra il palco ===== -->
+  <slot name="overlay"></slot>
+
   <!-- ===== Numeri fluttuanti ===== -->
   {#each floaters as f (f.key)}
-    <div class="floater {f.kind} {f.side}" style="--dx:{f.dx}px">{f.text}</div>
+    <div class="floater {f.kind} {f.side}" style="--dx:{f.dx}px; font-size:{f.fs}px">{f.text}</div>
   {/each}
+
+  <!-- ===== Lampo e annuncio a tutto palco ===== -->
+  {#key flashKey}
+    {#if flashKey > 0}<div class="flash" class:ovf={burst?.kind === 'overflow'}></div>{/if}
+  {/key}
+  {#if burst}
+    {#key burst.key}
+      <div class="burst {burst.kind} t{burst.tier}" aria-live="polite">
+        {#if burst.kind === 'overflow'}
+          <span class="b-sub">⚠ DOPAMINE CAP ⚠</span>
+        {/if}
+        <span class="b-main" data-text={burst.text}>{burst.text}</span>
+      </div>
+    {/key}
+  {/if}
+  {#if $overflowActive}<div class="ovf-tag">⚠ OVERFLOW</div>{/if}
 </section>
 
 <style>
   .stage {
-    position: relative; height: 300px; overflow: hidden; border-radius: 10px;
+    position: relative; height: 380px; overflow: hidden; border-radius: 10px;
     border: 1px solid #33333f; background: #0d0d14; isolation: isolate;
     --sky-a: #1a1530; --sky-b: #2d1f45; --floor-a: #2a2236; --floor-b: #17121f;
   }
@@ -126,10 +167,12 @@
   .stage.act2 { --sky-a: #2a1215; --sky-b: #4a2220; --floor-a: #3a2222; --floor-b: #1c1010; }
 
   .layer, .floor { position: absolute; left: 0; right: 0; }
+  /* il canvas 3D passato nello slot copre tutto il palco, senza intercettare i clic */
+  .stage :global(canvas.arena) { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 4; pointer-events: none; }
   .far { inset: 0; background: linear-gradient(180deg, var(--sky-a), var(--sky-b) 70%); }
   /* guglie lontane: triangoli via gradienti, nessun asset */
   .near {
-    bottom: 70px; height: 120px;
+    bottom: 140px; height: 120px;
     background:
       linear-gradient(135deg, transparent 49%, rgba(8,8,14,0.85) 50%) 0 100% / 90px 90px repeat-x,
       linear-gradient(225deg, transparent 49%, rgba(8,8,14,0.85) 50%) 45px 100% / 90px 90px repeat-x;
@@ -143,14 +186,14 @@
     animation: fogmove 18s ease-in-out infinite alternate;
   }
   .floor {
-    bottom: 0; height: 76px;
+    bottom: 0; height: 150px;
     background:
       repeating-linear-gradient(90deg, transparent 0 47px, rgba(0,0,0,0.25) 47px 48px),
       linear-gradient(180deg, var(--floor-a), var(--floor-b));
     border-top: 2px solid rgba(255,255,255,0.06);
   }
 
-  .slot { position: absolute; bottom: 38px; display: flex; flex-direction: column; align-items: center; }
+  .slot { position: absolute; bottom: 30px; display: flex; flex-direction: column; align-items: center; }
   .player-slot { left: 12%; }
   .enemy-slot { right: 12%; }
   .body { position: relative; z-index: 2; transition: opacity 0.6s, transform 0.6s, filter 0.2s; }
@@ -204,11 +247,11 @@
 
   /* numeri di danno */
   .floater {
-    position: absolute; bottom: 130px; z-index: 5; font-weight: 900; font-size: 30px;
+    position: absolute; bottom: 200px; z-index: 5; font-weight: 900; font-size: 30px;
     text-shadow: 0 2px 0 #000, 0 0 10px rgba(0,0,0,0.8); pointer-events: none;
     animation: floatup 1.4s ease-out forwards;
   }
-  .floater.enemy { right: calc(12% + 50px); }
+  .floater.enemy { right: calc(12% + 50px); bottom: 250px; }
   .floater.player { left: calc(12% + 40px); }
   .floater.hit.enemy { color: #ffd84c; }
   .floater.hit.player { color: #ff5c5c; }
@@ -220,17 +263,64 @@
     100% { transform: translate(var(--dx), -55px) scale(1); opacity: 0; }
   }
 
-  .glitch { animation: stage-glitch 0.12s infinite; }
-  @keyframes stage-glitch { 50% { filter: hue-rotate(90deg); transform: translate(2px, -1px); } }
+  /* scuotimento dello schermo: colpi pesanti e overflow */
+  .shake { animation: shake 0.09s linear infinite; }
+  @keyframes shake {
+    0% { transform: translate(0, 0); }
+    25% { transform: translate(-4px, 2px); }
+    50% { transform: translate(3px, -3px); }
+    75% { transform: translate(-2px, -2px); }
+    100% { transform: translate(0, 0); }
+  }
+  .flash {
+    position: absolute; inset: 0; z-index: 6; pointer-events: none;
+    background: radial-gradient(circle at 50% 55%, rgba(255,255,255,0.75), rgba(255,92,138,0.25) 55%, transparent 80%);
+    animation: flash 0.5s ease-out forwards;
+  }
+  .flash.ovf { background: radial-gradient(circle at 50% 55%, rgba(255,255,255,0.9), rgba(255,40,80,0.45) 50%, rgba(0,255,255,0.15) 80%); animation-duration: 0.9s; }
+  @keyframes flash { from { opacity: 1; } to { opacity: 0; } }
+
+  .burst {
+    position: absolute; left: 50%; top: 42%; z-index: 7; pointer-events: none;
+    transform: translate(-50%, -50%); text-align: center; display: flex; flex-direction: column; gap: 2px;
+    animation: burst-in 1.4s cubic-bezier(.2,1.4,.4,1) forwards;
+  }
+  .burst.overflow { animation-duration: 2.3s; }
+  .b-main { font-weight: 900; letter-spacing: 1px; text-shadow: 0 3px 0 #000, 0 0 18px rgba(0,0,0,0.9); font-size: 54px; }
+  .b-sub { font-weight: 900; font-size: 15px; letter-spacing: 4px; color: #ff9bb4; text-shadow: 0 2px 0 #000; }
+  .burst.t1 .b-main { color: #ffc2dd; font-size: 46px; }
+  .burst.t2 .b-main { color: #ff7ab0; font-size: 60px; }
+  .burst.t3 .b-main { color: #ffb84c; font-size: 76px; text-shadow: 0 3px 0 #000, 0 0 26px #ff8a00; }
+  .burst.t4 .b-main { color: #fff; font-size: 92px; text-shadow: 0 3px 0 #000, 0 0 34px #ff2d6f, 0 0 60px #ff2d6f; }
+  /* overflow: testo con separazione RGB e vibrazione */
+  .burst.overflow .b-main {
+    color: #fff; font-size: 70px; position: relative;
+    text-shadow: 3px 0 #ff2d6f, -3px 0 #2de2ff, 0 4px 0 #000;
+    animation: jitter 0.08s steps(2) infinite;
+  }
+  @keyframes jitter { 0% { transform: translate(0,0); } 50% { transform: translate(2px,-2px); } 100% { transform: translate(-2px,1px); } }
+  @keyframes burst-in {
+    0% { transform: translate(-50%, -30%) scale(0.2); opacity: 0; }
+    18% { transform: translate(-50%, -50%) scale(1.25); opacity: 1; }
+    30% { transform: translate(-50%, -50%) scale(1); }
+    80% { transform: translate(-50%, -54%) scale(1); opacity: 1; }
+    100% { transform: translate(-50%, -80%) scale(1.05); opacity: 0; }
+  }
+  .ovf-tag {
+    position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 6;
+    font-weight: 900; letter-spacing: 3px; font-size: 12px; color: #ff5c8a;
+    padding: 2px 12px; border: 1px solid #ff5c8a; border-radius: 4px; background: rgba(40,8,20,0.8);
+    animation: jitter 0.1s steps(2) infinite;
+  }
   @keyframes drift { to { background-position: -90px 100%, -45px 100%; } }
   @keyframes fogmove { to { transform: translateX(40px); } }
 
   @media (max-width: 640px) {
-    .stage { height: 260px; }
+    .stage { height: 330px; }
     .hud { width: 150px; }
     .player-slot { left: 2%; } .enemy-slot { right: 2%; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .near, .fog, .bubble { animation: none; }
+    .near, .fog, .bubble, .shake, .ovf-tag, .burst.overflow .b-main { animation: none; }
   }
 </style>

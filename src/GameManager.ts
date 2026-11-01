@@ -2,6 +2,8 @@ import Decimal from 'break_infinity.js';
 import { BattleEngine, Combatant } from '@core/BattleEngine';
 import { GoblinDie } from '@core/GoblinDie';
 import { formatBigNumber } from '@core/format';
+import { summarizeChain, multTier, magnitudeOf } from '@core/chain';
+import { SKILLS } from '@core/skills';
 import { EquipmentManager, DEMO_ITEMS, EquipmentItem } from '@core/equipment';
 import {
   BALANCE,
@@ -48,7 +50,10 @@ import {
   ForgeQuoteView,
   ForgeDieView,
   enemyInfo,
-  emitFx
+  emitFx,
+  chainView,
+  skillPreview,
+  rollNonce
 } from './ui/stores';
 import { ACT_BOSSES, CLASS_SPRITES } from './ui/spriteCatalog';
 
@@ -221,6 +226,49 @@ export class GameManager {
   }
 
   private enemyName = 'Avventuriero';
+  /** Moltiplicatore di overflow del tiro corrente (1 = nessun overflow) */
+  private overflowMult = new Decimal(1);
+
+  /** Anteprima per il giocatore: quanto farebbe ogni skill con questo tiro.
+   *  Usa la STESSA pipeline della risoluzione (equip e overflow inclusi),
+   *  quindi il numero mostrato coincide con quello che poi viene inflitto. */
+  private refreshPreview(): void {
+    const faces = this.lastFaces;
+    if (faces.length === 0) return;
+    const str = this.engine.player.stats.str;
+    const calc = (mod: Decimal) =>
+      this.engine.pipeline.calculateTurnDamage(str, faces, mod).times(this.overflowMult);
+
+    const fmt = formatBigNumber;
+    const sgancio = calc(SKILLS[SkillId.SGANCIO_BRUTALE].skillMod);
+    const scudo = calc(SKILLS[SkillId.SCUDO_GOBLIN].skillMod);
+    const sputoBase = calc(SKILLS[SkillId.SPUTO_ACIDO].skillMod);
+    const sputo = SKILLS[SkillId.SPUTO_ACIDO];
+    const veleno = sputoBase.times(sputo.poisonRatio ?? 0).times(Decimal.max(this.engine.player.stats.int, 1));
+    const truccato = calc(SKILLS[SkillId.TIRO_TRUCCATO].skillMod);
+
+    skillPreview.set({
+      [SkillId.SGANCIO_BRUTALE]: `${fmt(sgancio)} danni`,
+      [SkillId.SCUDO_GOBLIN]: `+${fmt(scudo)} scudo`,
+      [SkillId.SPUTO_ACIDO]: `${fmt(sputoBase)} + ☠${fmt(veleno)}×${sputo.poisonTurns}`,
+      [SkillId.TIRO_TRUCCATO]: `${fmt(truccato)} · rilancia 2`
+    });
+
+    const s = summarizeChain(faces);
+    chainView.set({
+      mult: fmt(s.multProduct),
+      tier: multTier(s.multProduct),
+      power: fmt(calc(new Decimal(1))),
+      multCount: s.multCount
+    });
+  }
+
+  /** Quando i dadi si fermano: il palco annuncia il moltiplicatore totale */
+  private announceChain(): void {
+    const s = summarizeChain(this.lastFaces);
+    const tier = multTier(s.multProduct);
+    if (tier > 0) emitFx('center', 'mult', `×${formatBigNumber(s.multProduct)}`, tier);
+  }
 
   private refreshRunHeader(): void {
     runLabel.set(this.run.label);
@@ -257,24 +305,34 @@ export class GameManager {
       this.lastFaces = faces;
       this.lastSources = sources;
       overflowActive.set(false);
+      this.overflowMult = new Decimal(1);
       rolledChips.set(faces.map(f => this.toChip(f)));
-      // ← Il Visual Blocking Callback: la logica attende il 3D
-      p.waitUntilFinished = () => this.diceWorld.throwDice(sources, faces);
+      rollNonce.update(n => n + 1);
+      this.refreshPreview();
+      // ← Il Visual Blocking Callback: la logica attende il 3D;
+      // quando i dadi si fermano, il palco annuncia il moltiplicatore.
+      p.waitUntilFinished = async () => {
+        await this.diceWorld.throwDice(sources, faces);
+        this.announceChain();
+      };
     });
 
     e.on('onOverflowTriggered', p => {
       overflowActive.set(true);
-      pushLog(`⚠️ OVERFLOW! Catena troncata: danno ×${formatBigNumber(p.multiplier as Decimal)}`);
+      this.overflowMult = p.multiplier as Decimal;
+      this.refreshPreview();
+      emitFx('center', 'overflow', `OVERFLOW ×${formatBigNumber(this.overflowMult)}`, 4);
+      pushLog(`⚠️ OVERFLOW! Catena troncata: danno ×${formatBigNumber(this.overflowMult)}`);
     });
 
     e.on('onDamageDealt', p => {
-      emitFx('enemy', 'hit', formatBigNumber(p.amount as Decimal));
+      emitFx('enemy', 'hit', formatBigNumber(p.amount as Decimal), magnitudeOf(p.amount as Decimal));
       pushLog(`💥 ${formatBigNumber(p.amount as Decimal)} danni a ${this.enemyName}`);
       this.refreshCombatants();
     });
 
     e.on('onShieldGained', p => {
-      emitFx('player', 'shield', `+${formatBigNumber(p.amount as Decimal)}`);
+      emitFx('player', 'shield', `+${formatBigNumber(p.amount as Decimal)}`, magnitudeOf(p.amount as Decimal));
       pushLog(`🛡️ Scudo del Goblin: ${formatBigNumber(p.amount as Decimal)} punti`);
       this.refreshCombatants();
     });
@@ -287,7 +345,7 @@ export class GameManager {
     e.on('onEnemyAction', p => {
       const intent = p.intent as EnemyIntent;
       const meta = INTENT_META[intent.type];
-      if (intent.type === IntentType.ATTACK) emitFx('player', 'hit', formatBigNumber(intent.value));
+      if (intent.type === IntentType.ATTACK) emitFx('player', 'hit', formatBigNumber(intent.value), magnitudeOf(intent.value));
       pushLog(`${meta.icon} ${this.enemyName} usa ${meta.label} (${formatBigNumber(intent.value)})`);
       this.refreshCombatants();
     });
@@ -414,8 +472,11 @@ export class GameManager {
       this.engine.rerollDice(indices, SkillId.TIRO_TRUCCATO);
       // lastFaces è la STESSA reference mutata dall'engine
       rolledChips.set(this.lastFaces.map(f => this.toChip(f)));
+      rollNonce.update(n => n + 1);
+      this.refreshPreview();
       pushLog(`🎲 Tiro Truccato: rilanciati ${indices.length} dadi`);
       await this.diceWorld.throwDice(this.lastSources, this.lastFaces);
+      this.announceChain();
     }
     await this.engine.resolvePlayerAction(SkillId.TIRO_TRUCCATO);
   }
