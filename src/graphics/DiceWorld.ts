@@ -19,6 +19,8 @@ import { magneticStep, DEFAULT_MAGNETIC, MagneticConfig } from './MagneticPhysic
 
 const DIE_SIZE = 1;
 const ARENA_HALF = 5; // semi-larghezza dell'arena
+/** Tempo massimo di un lancio prima del settle forzato (anti-softlock) */
+const ROLL_TIMEOUT_MS = 4000;
 
 interface ActiveDie {
   mesh: THREE.Mesh;
@@ -36,6 +38,7 @@ export class DiceWorld {
   private readonly world: CANNON.World;
   private active: ActiveDie[] = [];
   private resolveRoll: (() => void) | null = null;
+  private rafId: number | null = null;
   private readonly clock = new THREE.Clock();
 
   constructor(
@@ -125,8 +128,8 @@ export class DiceWorld {
         mass: 1,
         shape: new CANNON.Box(new CANNON.Vec3(DIE_SIZE / 2, DIE_SIZE / 2, DIE_SIZE / 2)),
         position: new CANNON.Vec3(
-          -2 + (i % 3) * 2 + this.rng.next() * 0.5,
-          4 + Math.floor(i / 3) * 1.5,
+          -4 + (i % 5) * 2 + this.rng.next() * 0.5,
+          4 + Math.floor(i / 5) * 1.5,
           -2 + this.rng.next() * 1.5
         ),
         // Damping alto: i dadi si fermano rapidamente (pacing)
@@ -144,13 +147,50 @@ export class DiceWorld {
       this.active.push({ mesh, body, textures, targetFaceIndex, settled: false });
     });
 
+    // Rete di sicurezza anti-softlock: se la fisica non si assesta entro il
+    // tempo massimo, i dadi vengono forzati nella posa finale e il
+    // Visual Blocking Callback si sblocca comunque.
     return new Promise(resolve => {
-      this.resolveRoll = resolve;
+      const timer = setTimeout(() => this.forceSettle(), ROLL_TIMEOUT_MS);
+      this.resolveRoll = () => {
+        clearTimeout(timer);
+        resolve();
+      };
     });
   }
 
+  private forceSettle(): void {
+    for (const die of this.active) {
+      if (die.settled) continue;
+      const { rotation } = magneticStep(
+        new THREE.Quaternion(
+          die.body.quaternion.x, die.body.quaternion.y,
+          die.body.quaternion.z, die.body.quaternion.w
+        ),
+        die.targetFaceIndex,
+        { ...this.magneticConfig, slerpFactor: 1, settleThreshold: 0 }
+      );
+      die.body.quaternion.set(rotation.x, rotation.y, rotation.z, rotation.w);
+      die.body.velocity.setZero();
+      die.body.angularVelocity.setZero();
+      die.body.type = CANNON.Body.STATIC;
+      die.settled = true;
+    }
+    const resolve = this.resolveRoll;
+    this.resolveRoll = null;
+    resolve?.();
+  }
+
+  /** Ferma il loop di rendering e libera le risorse GPU. */
+  public dispose(): void {
+    if (this.rafId !== null) cancelAnimationFrame(this.rafId);
+    this.rafId = null;
+    this.clearDice();
+    this.renderer.dispose();
+  }
+
   private animate = (): void => {
-    requestAnimationFrame(this.animate);
+    this.rafId = requestAnimationFrame(this.animate);
     const dt = Math.min(this.clock.getDelta(), 1 / 30);
     this.world.step(1 / 60, dt, 3);
 

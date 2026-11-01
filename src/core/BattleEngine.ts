@@ -55,7 +55,9 @@ export interface Combatant {
 export function createCombatant(stats: CombatantStats): Combatant {
   const maxHp = stats.vit.times(BALANCE.HP_PER_VIT);
   return {
-    stats,
+    // Copia difensiva: i buff di battaglia (BUFF_STR) modificano questa copia
+    // e non le stat persistenti del giocatore salvate nella run.
+    stats: { ...stats },
     hp: maxHp,
     maxHp,
     shield: new Decimal(0),
@@ -65,6 +67,9 @@ export function createCombatant(stats: CombatantStats): Combatant {
 
 export interface RollResult {
   faces: DieFace[];
+  /** Dado logico che ha prodotto ciascuna faccia (stesso indice di `faces`),
+   *  inclusi i lanci extra dei dadi ricorsivi. */
+  sources: GoblinDie[];
   /** true se il turno è stato risolto via Dopamine Cap */
   overflowed: boolean;
   /** Moltiplicatore extra applicato all'overflow (1.5^rimanenti) */
@@ -150,6 +155,7 @@ export class BattleEngine {
 
     await this.emitEvent('onDicesRolled', {
       dices: this.lastRoll.faces,
+      sources: this.lastRoll.sources,
       overflowed: this.lastRoll.overflowed
       // La UI aggiunge qui il proprio waitUntilFinished
     });
@@ -178,6 +184,7 @@ export class BattleEngine {
    */
   private rollDiceChain(): RollResult {
     const faces: DieFace[] = [];
+    const sources: GoblinDie[] = [];
     const queue: GoblinDie[] = [...this.diceBag];
     let rolledCount = 0;
     let pendingRecursive = 0;
@@ -191,6 +198,7 @@ export class BattleEngine {
       const die = queue.shift()!;
       const face = die.roll(this.player.stats.lck);
       faces.push(face);
+      sources.push(die);
       rolledCount++;
 
       if (face.type === FaceType.RECURSIVE) {
@@ -210,7 +218,7 @@ export class BattleEngine {
       ? new Decimal(BALANCE.OVERFLOW_MULT_BASE).pow(pendingRecursive)
       : new Decimal(1);
 
-    return { faces, overflowed, overflowMultiplier };
+    return { faces, sources, overflowed, overflowMultiplier };
   }
 
   /** Reroll selettivo (Tiro Truccato): rilancia i dadi agli indici
@@ -221,7 +229,7 @@ export class BattleEngine {
     }
     const allowed = SKILLS[skillId].rerolls;
     for (const idx of indices.slice(0, allowed)) {
-      const die = this.diceBag[idx % this.diceBag.length];
+      const die = this.lastRoll.sources[idx];
       if (die && this.lastRoll.faces[idx]) {
         this.lastRoll.faces[idx] = die.roll(this.player.stats.lck);
       }

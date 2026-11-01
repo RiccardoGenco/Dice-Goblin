@@ -92,6 +92,8 @@ export class GameManager {
 
   private bag: GoblinDie[] = [];
   private lastFaces: DieFace[] = [];
+  /** Dado logico di ciascuna faccia di lastFaces (inclusi i lanci ricorsivi extra) */
+  private lastSources: GoblinDie[] = [];
   private level = 0;
 
   /* ---- Meta-progressione (commit 11-13) ---- */
@@ -222,11 +224,13 @@ export class GameManager {
 
     e.on('onDicesRolled', p => {
       const faces = p.dices as DieFace[];
+      const sources = p.sources as GoblinDie[];
       this.lastFaces = faces;
+      this.lastSources = sources;
       overflowActive.set(false);
       rolledChips.set(faces.map(f => this.toChip(f)));
       // ← Il Visual Blocking Callback: la logica attende il 3D
-      p.waitUntilFinished = () => this.diceWorld.throwDice(this.bag, faces);
+      p.waitUntilFinished = () => this.diceWorld.throwDice(sources, faces);
     });
 
     e.on('onOverflowTriggered', p => {
@@ -378,7 +382,7 @@ export class GameManager {
       // lastFaces è la STESSA reference mutata dall'engine
       rolledChips.set(this.lastFaces.map(f => this.toChip(f)));
       pushLog(`🎲 Tiro Truccato: rilanciati ${indices.length} dadi`);
-      await this.diceWorld.throwDice(this.bag, this.lastFaces);
+      await this.diceWorld.throwDice(this.lastSources, this.lastFaces);
     }
     await this.engine.resolvePlayerAction(SkillId.TIRO_TRUCCATO);
   }

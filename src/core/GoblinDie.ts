@@ -13,6 +13,8 @@ import { DieFace, FaceType, Rarity, RNG, defaultRNG } from './types';
 /** Pesi base dell'estrazione: le facce forti sono rare per design */
 const BASE_WEIGHT_NORMAL = 5.0;
 const BASE_WEIGHT_SPECIAL = 1.0;
+const LCK_SLOPE = 0.15;
+const LCK_MAX_FACTOR = 2.0;
 
 export class GoblinDie {
   public readonly id: string;
@@ -35,19 +37,23 @@ export class GoblinDie {
   /**
    * Estrazione pesata di una faccia.
    *
-   * SCALING & FORTUNA: la Fortuna (lck) aumenta il peso delle sole
-   * facce speciali, ma è attenuata LOGARITMICAMENTE:
+   * SCALING & FORTUNA: la Fortuna (lck) MOLTIPLICA il peso delle sole
+   * facce non-NORMAL, con crescita logaritmica e tetto:
    *
-   *   lckFactor = ln(1 + lck) / ln(1.1)
+   *   fattore = min(LCK_MAX_FACTOR, 1 + LCK_SLOPE * ln(1 + lck))
    *
-   * La curva cresce rapidamente per i primi punti e si appiattisce
-   * oltre soglia: impedisce build "all-in LCK" che renderebbero
-   * certe le facce MULTIPLIER/RECURSIVE, le quali — componendosi
-   * moltiplicativamente nella pipeline danno — farebbero esplodere
-   * lo scaling esponenziale fuori dalla curva HP nemici (1.6^lv).
+   * Ordine di grandezza: lck 10 -> x1.36, lck 100 -> x1.69, tetto x2.
+   * La Fortuna aiuta ma non rende certe le facce MULTIPLIER/RECURSIVE:
+   * componendosi moltiplicativamente nella pipeline danno, farebbero
+   * esplodere lo scaling esponenziale fuori dalla curva HP nemici.
+   * (La versione precedente SOMMAVA un bonus ~12 a peso base 1: a lck 10
+   * la probabilita' di una faccia speciale passava dal 4% al 35%.)
    */
   public roll(lckModifier: number): DieFace {
-    const lckFactor = Math.log1p(Math.max(0, lckModifier)) / Math.log(1.1);
+    const lckFactor = Math.min(
+      LCK_MAX_FACTOR,
+      1 + LCK_SLOPE * Math.log1p(Math.max(0, lckModifier))
+    );
 
     const weights = this.faces.map(face => {
       const baseWeight =
@@ -57,7 +63,7 @@ export class GoblinDie {
 
       // La fortuna spinge solo le facce non-NORMAL
       return face.type !== FaceType.NORMAL
-        ? baseWeight + lckFactor * 0.5
+        ? baseWeight * lckFactor
         : baseWeight;
     });
 
