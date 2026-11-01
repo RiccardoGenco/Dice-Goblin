@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { GameManager } from '../GameManager';
+  import Stage from './Stage.svelte';
   import { SKILLS } from '@core/skills';
   import { BattleState, FaceType, SkillId } from '@core/types';
   import { MAX_EQUIPMENT_SLOTS } from '@core/equipment';
@@ -112,23 +113,8 @@
     <button class="mini" on:click={() => void gm?.newRun()}>🔄 Nuova Run</button>
   </section>
 
-  <!-- ===== Pannello nemico + intento (MVP §2: intenti deterministici) ===== -->
-  <section class="panel enemy">
-    <div class="row">
-      <span class="name">🗡️ Avventuriero</span>
-      {#if $intentView}
-        <span class="intent" title="Intento del prossimo turno">
-          {$intentView.icon} {$intentView.label}: <b>{$intentView.value}</b>
-        </span>
-      {/if}
-    </div>
-    <div class="hpbar"><div class="fill enemy-fill" style="width:{$enemyView.hpRatio * 100}%"></div></div>
-    <div class="row small">
-      <span>HP {$enemyView.hp} / {$enemyView.maxHp}</span>
-      {#if $enemyView.shield !== '0'}<span>🛡️ {$enemyView.shield}</span>{/if}
-      {#if $enemyView.poisonTurns > 0}<span>☠️ ×{$enemyView.poisonTurns}</span>{/if}
-    </div>
-  </section>
+  <!-- ===== Palco di combattimento: sprite, HP, intento, effetti ===== -->
+  <Stage />
 
   <!-- ===== Arena 3D (Canvas Layer, GDD §6.2) ===== -->
   <div class="arena-wrap" class:overflow-glitch={$overflowActive}>
@@ -159,14 +145,6 @@
 
   <!-- ===== Pannello giocatore ===== -->
   <section class="panel player">
-    <div class="row">
-      <span class="name">👺 Goblin</span>
-      {#if $playerView.shield !== '0'}<span>🛡️ {$playerView.shield}</span>{/if}
-      {#if $playerView.poisonTurns > 0}<span>☠️ ×{$playerView.poisonTurns}</span>{/if}
-    </div>
-    <div class="hpbar"><div class="fill player-fill" style="width:{$playerView.hpRatio * 100}%"></div></div>
-    <div class="row small"><span>HP {$playerView.hp} / {$playerView.maxHp}</span></div>
-
     <!-- Le 4 skill fisse di classe (MVP §3) -->
     <div class="skills">
       {#each SKILL_ORDER as s}
@@ -363,7 +341,7 @@
   .player-fill { background: linear-gradient(90deg, #4cc94c, #7dff9b); }
 
   .arena-wrap { position: relative; }
-  .arena { display: block; width: 100%; height: 340px; background: #101014; border-radius: 8px; }
+  .arena { display: block; width: 100%; height: 260px; background: #101014; border-radius: 8px; }
   .overflow-glitch .arena { animation: glitch 0.12s infinite; }
   .overflow-banner {
     position: absolute; top: 10px; left: 50%; transform: translateX(-50%);

@@ -46,8 +46,11 @@ import {
   DieChip,
   ShopOfferView,
   ForgeQuoteView,
-  ForgeDieView
+  ForgeDieView,
+  enemyInfo,
+  emitFx
 } from './ui/stores';
+import { ACT_BOSSES, CLASS_SPRITES } from './ui/spriteCatalog';
 
 /* ============================================================
  * GameManager — Il collante (Piano Fase 5)
@@ -184,14 +187,40 @@ export class GameManager {
     this.engine = new BattleEngine(this.playerStats, enemyStats, this.bag);
     this.equipment.syncPipeline(this.engine.pipeline);
     this.registerListeners();
+    this.pickEnemyLook();
     pushLog(
       this.run.isActBoss
         ? `— 👑 ${this.run.label}: il BOSS sbarra la strada! —`
         : this.run.isChampion
           ? `— 🏆 ${this.run.label}: il Campione ti sfida! —`
-          : `— ${this.run.label}: un Avventuriero si avvicina —`
+          : `— ${this.run.label}: ${this.enemyName} si avvicina —`
     );
   }
+
+  /** Sceglie sprite, nome e tinta del nemico (placeholder Arcana Siege).
+   *  Normali: ciclo sulle 6 classi del content_specs; Campione: classe in
+   *  tinta oro; Boss d'Atto: identità fissa per Atto. */
+  private pickEnemyLook(): void {
+    const { act, encounter } = this.run.state;
+    if (this.run.isActBoss) {
+      const b = ACT_BOSSES[(act - 1) % ACT_BOSSES.length]!;
+      this.enemyName = b.name;
+      enemyInfo.set({ name: b.name, sprite: b.sprite, tint: b.tint, tier: 'boss', hue: 0 });
+      return;
+    }
+    const cls = CLASS_SPRITES[((act - 1) * 3 + encounter) % CLASS_SPRITES.length]!;
+    if (this.run.isChampion) {
+      this.enemyName = `Campione — ${cls.name}`;
+      enemyInfo.set({ name: `Campione — ${cls.name}`, sprite: cls.sprite, tint: 'champion', tier: 'champion', hue: 0 });
+      return;
+    }
+    // variante cromatica per incontro: stessa sprite, aspetto diverso
+    const hue = cls.tint === 'none' ? ((act * 37 + encounter * 53) % 360) : 0;
+    this.enemyName = cls.name;
+    enemyInfo.set({ name: cls.name, sprite: cls.sprite, tint: cls.tint, tier: 'normal', hue });
+  }
+
+  private enemyName = 'Avventuriero';
 
   private refreshRunHeader(): void {
     runLabel.set(this.run.label);
@@ -239,23 +268,27 @@ export class GameManager {
     });
 
     e.on('onDamageDealt', p => {
-      pushLog(`💥 ${formatBigNumber(p.amount as Decimal)} danni all'Avventuriero`);
+      emitFx('enemy', 'hit', formatBigNumber(p.amount as Decimal));
+      pushLog(`💥 ${formatBigNumber(p.amount as Decimal)} danni a ${this.enemyName}`);
       this.refreshCombatants();
     });
 
     e.on('onShieldGained', p => {
+      emitFx('player', 'shield', `+${formatBigNumber(p.amount as Decimal)}`);
       pushLog(`🛡️ Scudo del Goblin: ${formatBigNumber(p.amount as Decimal)} punti`);
       this.refreshCombatants();
     });
 
     e.on('onPoisonApplied', p => {
+      emitFx('enemy', 'poison', `☠ ${formatBigNumber(p.perTurn as Decimal)}`);
       pushLog(`☠️ Veleno: ${formatBigNumber(p.perTurn as Decimal)}/turno × ${p.turns as number}`);
     });
 
     e.on('onEnemyAction', p => {
       const intent = p.intent as EnemyIntent;
       const meta = INTENT_META[intent.type];
-      pushLog(`${meta.icon} L'Avventuriero usa ${meta.label} (${formatBigNumber(intent.value)})`);
+      if (intent.type === IntentType.ATTACK) emitFx('player', 'hit', formatBigNumber(intent.value));
+      pushLog(`${meta.icon} ${this.enemyName} usa ${meta.label} (${formatBigNumber(intent.value)})`);
       this.refreshCombatants();
     });
 

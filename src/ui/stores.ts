@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
 import { BattleState } from '@core/types';
+import type { SpriteId, TintId } from './spriteCatalog';
 
 /* ============================================================
  * Store reattivi della UI (GDD §6.2 — DOM Layer)
@@ -92,4 +93,30 @@ export const rewardBanner = writable<string | null>(null);
 
 export function pushLog(line: string): void {
   logLines.update(lines => [line, ...lines].slice(0, 6));
+}
+
+/* ---- Palco di combattimento ---- */
+export interface EnemyInfo {
+  name: string;
+  sprite: SpriteId;
+  tint: TintId;
+  tier: 'normal' | 'champion' | 'boss';
+  /** rotazione di tinta (gradi) per differenziare gli incontri normali */
+  hue: number;
+}
+export const enemyInfo = writable<EnemyInfo>({
+  name: 'Avventuriero', sprite: 'knight', tint: 'none', tier: 'normal', hue: 0
+});
+
+/** Effetto scenico puntuale: il palco lo trasforma in animazioni e numeri */
+export interface StageFx {
+  id: number;
+  target: 'player' | 'enemy';
+  kind: 'hit' | 'shield' | 'poison';
+  text: string;
+}
+export const stageFx = writable<StageFx | null>(null);
+let fxCounter = 0;
+export function emitFx(target: StageFx['target'], kind: StageFx['kind'], text: string): void {
+  stageFx.set({ id: ++fxCounter, target, kind, text });
 }
