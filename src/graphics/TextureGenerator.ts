@@ -3,6 +3,7 @@ import { DieFace, FaceType, Rarity } from '@core/types';
 import { EFFECT_META } from '@core/effects';
 import { GoblinDie } from '@core/GoblinDie';
 import { formatFaceValue } from '@core/format';
+import { iconFor } from '../ui/icons';
 
 /* ============================================================
  * TextureGenerator — Facce dinamiche su Canvas 2D (GDD §6.3)
@@ -36,6 +37,21 @@ const RARITY_GLOW: Record<Rarity, string> = {
 };
 
 /** Set riutilizzabile di canvas+texture per le 6 facce di un dado */
+/** Disegna l'icona di un'emoji del gioco (tracciato SVG a 512) centrata in (cx, cy), alta `size` px */
+function drawIcon(ctx: CanvasRenderingContext2D, emoji: string, cx: number, cy: number, size: number, color?: string): void {
+  const def = iconFor(emoji);
+  if (!def) return;
+  const k = size / 512;
+  ctx.save();
+  ctx.translate(cx - size / 2, cy - size / 2);
+  ctx.scale(k, k);
+  ctx.fillStyle = color ?? def.color;
+  ctx.shadowColor = 'rgba(0,0,0,0.7)';
+  ctx.shadowBlur = 6 / k * 0.1;
+  ctx.fill(new Path2D(def.d));
+  ctx.restore();
+}
+
 export class DieTextureSet {
   private readonly canvases: HTMLCanvasElement[] = [];
   private readonly contexts: CanvasRenderingContext2D[] = [];
@@ -116,20 +132,12 @@ export class DieTextureSet {
       ctx.globalAlpha = 0.28;
       ctx.fillRect(s * 0.05, s * 0.05, s * 0.9, s * 0.9);
       ctx.globalAlpha = 1;
-      ctx.font = `${s * 0.17}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(EFFECT_META[face.effect].icon, s / 2, s * 0.82);
+      drawIcon(ctx, EFFECT_META[face.effect].icon, s / 2, s * 0.82, s * 0.2);
     }
 
     // Valore centrale. La faccia ricorsiva mostra solo ↻ (il suo valore è sempre 1).
     if (face.type === FaceType.RECURSIVE) {
-      ctx.fillStyle = style.fg;
-      ctx.font = `bold ${s * 0.5}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('↻', s / 2, face.effect ? s * 0.46 : s * 0.5);
+      drawIcon(ctx, '↻', s / 2, face.effect ? s * 0.46 : s * 0.5, s * 0.5, style.fg);
       return;
     }
     const prefix = face.type === FaceType.MULTIPLIER ? '×' : '';

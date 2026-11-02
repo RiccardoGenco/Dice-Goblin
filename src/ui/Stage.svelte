@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Icon from './Icon.svelte';
+  import Rich from './Rich.svelte';
   import { onDestroy } from 'svelte';
   import Sprite from './Sprite.svelte';
   import { SPRITES } from './spriteCatalog';
@@ -104,8 +106,8 @@
     <div class="who">
       <span class="nm">Goblin</span>
       <span class="status">
-        {#if $playerView.shield !== '0'}<span>🛡️ {$playerView.shield}</span>{/if}
-        {#if $playerView.poisonTurns > 0}<span>☠️ ×{$playerView.poisonTurns}</span>{/if}
+        {#if $playerView.shield !== '0'}<span><Icon e="🛡" /> {$playerView.shield}</span>{/if}
+        {#if $playerView.poisonTurns > 0}<span><Icon e="☠" /> ×{$playerView.poisonTurns}</span>{/if}
       </span>
     </div>
     <div class="bar"><div class="fill pfill" style="width:{$playerView.hpRatio * 100}%"></div></div>
@@ -116,8 +118,8 @@
     <div class="who">
       <span class="nm" class:boss={tier === 'boss'} class:champ={tier === 'champion'}>{$enemyInfo.name}</span>
       <span class="status">
-        {#if $enemyView.shield !== '0'}<span>🛡️ {$enemyView.shield}</span>{/if}
-        {#if $enemyView.poisonTurns > 0}<span>☠️ ×{$enemyView.poisonTurns}</span>{/if}
+        {#if $enemyView.shield !== '0'}<span><Icon e="🛡" /> {$enemyView.shield}</span>{/if}
+        {#if $enemyView.poisonTurns > 0}<span><Icon e="☠" /> ×{$enemyView.poisonTurns}</span>{/if}
       </span>
     </div>
     <div class="bar"><div class="fill efill" style="width:{$enemyView.hpRatio * 100}%"></div></div>
@@ -128,19 +130,19 @@
   <div class="slot enemy-slot">
     {#if $intentView && !dead}
       <div class="bubble" title="Intento del prossimo turno">
-        <span class="bi">{$intentView.icon}</span>
-        <span class="bl">{$intentView.label}</span>
+        <span class="bi"><Icon e={$intentView.icon} /></span>
+        <span class="bl"><Rich text={$intentView.label} /></span>
         <b>{$intentView.value}</b>
       </div>
       {#if $intentQueue.length}
         <div class="queue" title="Prossimi intenti">
-          {#each $intentQueue as q, i}<span class="q q{i}">{q.icon} {q.value}</span>{/each}
+          {#each $intentQueue as q, i}<span class="q q{i}"><Icon e={q.icon} /> {q.value}</span>{/each}
         </div>
       {/if}
       {#if $bossRuleText}<div class="rule">{$bossRuleText}</div>{/if}
     {/if}
     <div class="body enemy-body {enemyAnim}" class:dead style="filter:{enemyFilter}">
-      <Sprite id={$enemyInfo.sprite} {scale} flip tint={$enemyInfo.tint} />
+      <Sprite id={$enemyInfo.sprite} {scale} tint={$enemyInfo.tint} />
     </div>
     <div class="shadow" style="width:{enemyW * 0.8}px"></div>
   </div>
@@ -158,7 +160,7 @@
 
   <!-- ===== Numeri fluttuanti ===== -->
   {#each floaters as f (f.key)}
-    <div class="floater {f.kind} {f.side}" style="--dx:{f.dx}px; font-size:{Math.round(f.fs * ui)}px">{f.text}</div>
+    <div class="floater {f.kind} {f.side}" style="--dx:{f.dx}px; font-size:{Math.round(f.fs * ui)}px"><Rich text={f.text} /></div>
   {/each}
 
   <!-- ===== Lampo e annuncio a tutto palco ===== -->
@@ -169,13 +171,13 @@
     {#key burst.key}
       <div class="burst {burst.kind} t{burst.tier}" aria-live="polite">
         {#if burst.kind === 'overflow'}
-          <span class="b-sub">⚠ DOPAMINE CAP ⚠</span>
+          <span class="b-sub"><Icon e="⚠" /> DOPAMINE CAP <Icon e="⚠" /></span>
         {/if}
         <span class="b-main" data-text={burst.text}>{burst.text}</span>
       </div>
     {/key}
   {/if}
-  {#if $overflowActive}<div class="ovf-tag">⚠ OVERFLOW</div>{/if}
+  {#if $overflowActive}<div class="ovf-tag"><Icon e="⚠" /> OVERFLOW</div>{/if}
 </section>
 
 <style>

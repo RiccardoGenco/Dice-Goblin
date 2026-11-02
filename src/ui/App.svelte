@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Icon from './Icon.svelte';
+  import Rich from './Rich.svelte';
   import { onMount } from 'svelte';
   import { GameManager } from '../GameManager';
   import Stage from './Stage.svelte';
@@ -211,16 +213,16 @@
           <button
             class="relic" class:filled={item}
             title={item ? `${item.name} — ${item.description}` : 'Slot vuoto: compra oggetti dal mercante'}
-          >{item ? item.icon : ''}</button>
+          >{#if item}<Icon e={item.icon} />{/if}</button>
         {/each}
       </div>
     {/key}
 
     <div class="topright">
-      <span class="gold" title="Oro">💰 {$goldView}</span>
-      <button class="restart" on:click={() => menuOpen.set(true)}>☰ Menù</button>
+      <span class="gold" title="Oro"><Icon e="💰" /> {$goldView}</span>
+      <button class="restart" on:click={() => menuOpen.set(true)}><Icon e="☰" /> Menù</button>
       <button class="restart" class:armed={restartArmed} on:click={onRestart}>
-        {restartArmed ? 'Sicuro? Perdi la run' : '↻ Nuova run'}
+        <Rich text={restartArmed ? 'Sicuro? Perdi la run' : '↻ Nuova run'} />
       </button>
     </div>
   </header>
@@ -231,7 +233,7 @@
       <canvas slot="overlay" bind:this={canvas} class="arena"></canvas>
     </Stage>
     <div class="feed" aria-live="polite">
-      {#each $logLines.slice(0, 3) as line, i (line + i)}<div style="opacity:{1 - i * 0.3}">{line}</div>{/each}
+      {#each $logLines.slice(0, 3) as line, i (line + i)}<div style="opacity:{1 - i * 0.3}"><Rich text={line} /></div>{/each}
     </div>
   </div>
 
@@ -248,10 +250,10 @@
               class:selectable={canAct}
               title={$handSelection.includes(g.i) ? 'Giocato: tocca per metterlo in panchina' : 'In panchina: tocca per giocarlo'}
               on:click={() => toggleCard(g.i)}
-            >{g.chip.text}</button>
+            ><Rich text={g.chip.text} /></button>
             {#each g.kids as k (k.j)}
               <button class="chip extra {k.c.cssClass}" class:benched={!$handSelection.includes(g.i)}
-                on:click={() => toggleCard(g.i)} title="Lancio extra: segue il dado che lo ha generato">↳ {k.c.text}</button>
+                on:click={() => toggleCard(g.i)} title="Lancio extra: segue il dado che lo ha generato">↳ <Rich text={k.c.text} /></button>
             {/each}
           </div>
         {/each}
@@ -260,10 +262,10 @@
     <div class="side">
       {#if $effectsView && $battleState === BattleState.WAIT_PLAYER_ACTION && ($effectsView.poison || $effectsView.shield || $effectsView.fire)}
         <div class="fxsum" title="Effetti delle facce incantate uscite">
-          {#if $effectsView.poison}<span class="e-p">☠ {$effectsView.poison}/t</span>{/if}
-          {#if $effectsView.shield}<span class="e-s">🛡 +{$effectsView.shield}</span>{/if}
-          {#if $effectsView.fire}<span class="e-f">🔥 {$effectsView.fire}</span>{/if}
-          {#each $effectsView.reactions as r (r.id)}<span class="react" title={r.text}>⚗️ {r.name}</span>{/each}
+          {#if $effectsView.poison}<span class="e-p"><Icon e="☠" /> {$effectsView.poison}/t</span>{/if}
+          {#if $effectsView.shield}<span class="e-s"><Icon e="🛡" /> +{$effectsView.shield}</span>{/if}
+          {#if $effectsView.fire}<span class="e-f"><Icon e="🔥" /> {$effectsView.fire}</span>{/if}
+          {#each $effectsView.reactions as r (r.id)}<span class="react" title={r.text}><Icon e="⚗" /> {r.name}</span>{/each}
         </div>
       {/if}
       {#if $chainView && $battleState === BattleState.WAIT_PLAYER_ACTION}
@@ -272,8 +274,8 @@
           <span class="f-pow"><small>Potenza</small> <b class="num">{$chainView.power}</b></span>
         </div>
       {/if}
-      <div class="slots" title="Tocca i dadi per scegliere quali giocare">
-        🎲 Giochi <b>{$handSelection.length}/{$handInfo.slots}</b>
+      <div class="hand-slots" title="Tocca i dadi per scegliere quali giocare">
+        <Icon e="🎲" /> Giochi <b>{$handSelection.length}/{$handInfo.slots}</b>
         <small>{$handInfo.drawn} pescati</small>
       </div>
     </div>
@@ -285,10 +287,10 @@
       {#each SKILL_ORDER as s, i}
         <button class="card" disabled={!canAct} on:click={() => useSkill(s.id)}>
           <kbd class="key">{i + 1}</kbd>
-          <span class="c-icon">{s.icon}</span>
+          <span class="c-icon"><Icon e={s.icon} /></span>
           <span class="c-name">{SKILLS[s.id].name}</span>
-          <span class="c-preview">{$skillPreview[s.id] ?? '…'}</span>
-          {#if $skillHints[s.id]}<span class="c-alert {$skillHints[s.id]?.kind}">{$skillHints[s.id]?.text}</span>{/if}
+          <span class="c-preview"><Rich text={$skillPreview[s.id] ?? '…'} /></span>
+          {#if $skillHints[s.id]}<span class="c-alert {$skillHints[s.id]?.kind}"><Rich text={$skillHints[s.id]?.text ?? ''} /></span>{/if}
           <span class="c-hint">{s.hint}</span>
         </button>
       {/each}
@@ -299,10 +301,10 @@
   {#if $uiPhase === 'shop'}
     <div class="overlay">
       <div class="overlay-box shop-box" class:royal={$shopSpecial}>
-        <h2>{$shopSpecial ? '👑 Il Mercante Reale' : '🛒 Il Mercante Goblin'}</h2>
+        <h2><Rich text={$shopSpecial ? '👑 Il Mercante Reale' : '🛒 Il Mercante Goblin'} /></h2>
         {#if $shopSpecial}<p class="unlock">Prezzi scontati del 30% — bottino da boss fight!</p>{/if}
-        {#if $rewardBanner}<p class="unlock">{$rewardBanner}</p>{/if}
-        <p class="gold">💰 {$goldView} oro <span class="hpnow">· ❤️ {$shopInfo.hp}</span></p>
+        {#if $rewardBanner}<p class="unlock"><Rich text={$rewardBanner} /></p>{/if}
+        <p class="gold"><Icon e="💰" /> {$goldView} oro <span class="hpnow">· <Icon e="❤" /> {$shopInfo.hp}</span></p>
         <div class="offers">
           {#each $shopOffers.filter(o => !o.service) as offer (offer.id)}
             <button
@@ -311,10 +313,10 @@
               title={offer.description}
               on:click={() => gm?.buyOffer(offer.id)}
             >
-              <span class="icon">{offer.icon}</span>
-              <span class="label">{offer.label}{#if offer.rarity} <small class="tier">{TIER_NAME[offer.rarity] ?? ''}</small>{/if}</span>
-              <span class="hint">{offer.description}{offer.note ? ` — ${offer.note}` : ''}</span>
-              <span class="cost" class:too-expensive={!offer.affordable}>💰 {offer.cost}</span>
+              <span class="icon"><Icon e={offer.icon} /></span>
+              <span class="label"><Rich text={offer.label} />{#if offer.rarity} <small class="tier">{TIER_NAME[offer.rarity] ?? ''}</small>{/if}</span>
+              <span class="hint"><Rich text={offer.description + (offer.note ? ` — ${offer.note}` : '')} /></span>
+              <span class="cost" class:too-expensive={!offer.affordable}><Icon e="💰" /> {offer.cost}</span>
             </button>
           {/each}
           {#if $shopOffers.filter(o => !o.service).length === 0}
@@ -324,14 +326,14 @@
         <div class="shop-actions">
           <button class="shop-reroll" disabled={!$shopInfo.canReroll} on:click={() => gm?.rerollShop()}
             title="Rimescola oggetti, faccia e dado in vendita. Ogni rilancio della visita costa di più.">
-            🔄 Rilancia il banco <b class="num">💰 {$shopInfo.rerollCost}</b>
+            <Icon e="🔄" /> Rilancia il banco <b class="num"><Icon e="💰" /> {$shopInfo.rerollCost}</b>
           </button>
           {#each $shopOffers.filter(o => o.service) as offer (offer.id)}
             <button class="offer service" disabled={!offer.affordable} title={offer.description}
               on:click={() => gm?.buyOffer(offer.id)}>
-              <span class="icon">{offer.icon}</span>
-              <span class="label">{offer.label}</span>
-              <span class="cost" class:too-expensive={!offer.affordable}>💰 {offer.cost}</span>
+              <span class="icon"><Icon e={offer.icon} /></span>
+              <span class="label"><Rich text={offer.label} /></span>
+              <span class="cost" class:too-expensive={!offer.affordable}><Icon e="💰" /> {offer.cost}</span>
             </button>
           {/each}
         </div>
@@ -345,14 +347,14 @@
                 <button class="sellslot {it?.rarity ?? ''}" disabled={!it}
                   title={it ? `${it.name} — ${it.description}` : 'Slot vuoto'}
                   on:click={() => gm?.sellSlot(i)}>
-                  <span>{it ? it.icon : ''}</span>
-                  {#if val}<small>💰{formatBigNumber(val)}</small>{/if}
+                  <span>{#if it}<Icon e={it.icon} />{/if}</span>
+                  {#if val}<small><Icon e="💰" />{formatBigNumber(val)}</small>{/if}
                 </button>
               {/each}
             </div>
           </div>
         {/key}
-        <button class="skill" on:click={() => void gm?.leaveShop()}>⚔️ Prossimo incontro</button>
+        <button class="skill" on:click={() => void gm?.leaveShop()}><Icon e="⚔" /> Prossimo incontro</button>
       </div>
     </div>
   {/if}
@@ -361,17 +363,17 @@
   {#if $uiPhase === 'crossroad'}
     <div class="overlay">
       <div class="overlay-box" class:royal={$crossroadSpecial}>
-        <h2>{$crossroadSpecial ? '✨ Bivio Dorato' : '⚖️ Il Bivio'}</h2>
-        {#if $rewardBanner}<p class="unlock">{$rewardBanner}</p>{/if}
-        <p class="hint-line">Scegli una porta: l'altra si chiuderà. 💰 {$goldView} oro</p>
+        <h2><Rich text={$crossroadSpecial ? '✨ Bivio Dorato' : '⚖️ Il Bivio'} /></h2>
+        {#if $rewardBanner}<p class="unlock"><Rich text={$rewardBanner} /></p>{/if}
+        <p class="hint-line">Scegli una porta: l'altra si chiuderà. <Icon e="💰" /> {$goldView} oro</p>
         <div class="doors">
           <button class="door" class:golden={$crossroadSpecial} on:click={() => gm?.chooseDoor('shop')}>
-            <span class="icon">{$crossroadSpecial ? '👑' : '🛒'}</span>
+            <span class="icon"><Rich text={$crossroadSpecial ? '👑' : '🛒'} /></span>
             <span class="label">{$crossroadSpecial ? 'Mercante Reale' : 'Il Mercante'}</span>
             <span class="hint">{$crossroadSpecial ? 'Sconto 30% e offerta premium' : 'Stat, oggetti e dadi'}</span>
           </button>
           <button class="door" class:golden={$crossroadSpecial} on:click={() => gm?.chooseDoor('forge')}>
-            <span class="icon">🔨</span>
+            <span class="icon"><Icon e="🔨" /></span>
             <span class="label">{$crossroadSpecial ? 'Gran Forgia' : 'La Forgia'}</span>
             <span class="hint">{$crossroadSpecial ? '3 operazioni, Trasmutazione -50%' : 'Scolpisci le facce dei dadi'}</span>
           </button>
@@ -384,17 +386,17 @@
   {#if $uiPhase === 'forge'}
     <div class="overlay">
       <div class="overlay-box forge-box" class:royal={$forgeSpecial}>
-        <h2>{$forgeSpecial ? '🔥 La Gran Forgia' : '🔨 La Forgia dei Dadi'}</h2>
-        <p class="hint-line">💰 {$goldView} oro — Operazioni rimaste: {$forgeOpsLeft}</p>
+        <h2><Rich text={$forgeSpecial ? '🔥 La Gran Forgia' : '🔨 La Forgia dei Dadi'} /></h2>
+        <p class="hint-line"><Icon e="💰" /> {$goldView} oro — Operazioni rimaste: {$forgeOpsLeft}</p>
         {#if fusionMode}
-          <p class="unlock">⚒️ Scegli il dado da SACRIFICARE (D{(selDie ?? 0) + 1} ne assorbirà la faccia migliore)</p>
+          <p class="unlock"><Icon e="⚒" /> Scegli il dado da SACRIFICARE (D{(selDie ?? 0) + 1} ne assorbirà la faccia migliore)</p>
         {/if}
         <div class="forge-dice">
           {#each forgeBag as fdie, di}
             <button class="forge-die" class:selected={selDie === di}
               class:sacrifice={fusionMode && selDie !== di}
               on:click={() => onForgeDieClick(di)}>
-              <span>{fdie.icon} D{di + 1}</span>
+              <span><Icon e={fdie.icon} /> D{di + 1}</span>
               <span class="hint">{fdie.blueprintName ?? fdie.rarityName}</span>
             </button>
           {/each}
@@ -409,36 +411,36 @@
           <div class="services">
             <button class="service" disabled={!tempraQ?.ok || $forgeOpsLeft === 0}
               title={tempraQ?.reason ?? 'Seleziona una faccia'} on:click={forgeTempra}>
-              <span>🔥 Tempra</span>
-              {#if tempraQ}<span class="cost">💰 {tempraQ.cost}</span>{/if}
+              <span><Icon e="🔥" /> Tempra</span>
+              {#if tempraQ}<span class="cost"><Icon e="💰" /> {tempraQ.cost}</span>{/if}
               {#if tempraQ?.preview}<span class="hint">{tempraQ.preview}</span>{/if}
             </button>
             {#each transQs as tq (tq.label)}
               <button class="service" disabled={!tq.q.ok || $forgeOpsLeft === 0}
                 title={tq.q.reason ?? tq.q.preview} on:click={() => forgeTrans(tq.t)}>
-                <span>⚗️ {tq.label}</span>
-                <span class="cost">💰 {tq.q.cost}</span>
+                <span><Icon e="⚗" /> {tq.label}</span>
+                <span class="cost"><Icon e="💰" /> {tq.q.cost}</span>
               </button>
             {/each}
             {#each incQs as iq (iq.e)}
               <button class="service" disabled={!iq.q.ok || $forgeOpsLeft === 0}
                 title={iq.q.reason ?? iq.q.preview} on:click={() => forgeIncanto(iq.e)}>
-                <span>✨ Incanta {iq.label}</span>
-                <span class="cost">💰 {iq.q.cost}</span>
+                <span><Icon e="✨" /> Incanta {iq.label}</span>
+                <span class="cost"><Icon e="💰" /> {iq.q.cost}</span>
               </button>
             {/each}
             <button class="service" class:selected={fusionMode}
               disabled={forgeBag.length < 2 || $forgeOpsLeft === 0}
               title="Sacrifica un dado: questo ne eredita la faccia migliore e sale di rarità"
               on:click={() => (fusionMode = !fusionMode)}>
-              <span>⚒️ Fusione</span>
-              {#if fusioneQ}<span class="cost">💰 {fusioneQ.cost}</span>{/if}
+              <span><Icon e="⚒" /> Fusione</span>
+              {#if fusioneQ}<span class="cost"><Icon e="💰" /> {fusioneQ.cost}</span>{/if}
             </button>
             {#if $forgeSpecial}
               <button class="service" disabled={!riforgQ?.ok || $forgeOpsLeft === 0}
                 title={riforgQ?.reason ?? riforgQ?.preview} on:click={forgeRiforgia}>
-                <span>🌋 Riforgiatura</span>
-                {#if riforgQ}<span class="cost">💰 {riforgQ.cost}</span>{/if}
+                <span><Icon e="🌋" /> Riforgiatura</span>
+                {#if riforgQ}<span class="cost"><Icon e="💰" /> {riforgQ.cost}</span>{/if}
                 {#if riforgQ?.preview}<span class="hint">{riforgQ.preview}</span>{/if}
               </button>
             {/if}
@@ -446,7 +448,7 @@
         {:else}
           <p class="hint-line">Seleziona un dado per vedere le sue facce</p>
         {/if}
-        <button class="skill" on:click={() => void gm?.leaveForge()}>⚔️ Prossimo incontro</button>
+        <button class="skill" on:click={() => void gm?.leaveForge()}><Icon e="⚔" /> Prossimo incontro</button>
       </div>
     </div>
   {/if}
@@ -455,11 +457,11 @@
   {#if $runSummary}
     <div class="overlay">
       <div class="overlay-box summary-box" class:royal={$runSummary.outcome === 'vittoria'}>
-        <h2>{$runSummary.title}</h2>
+        <h2><Rich text={$runSummary.title} /></h2>
         <p class="hint-line">
           {$runSummary.endLabel}{$runSummary.killedBy ? ` — sconfitto da ${$runSummary.killedBy}` : ''}
         </p>
-        {#if $rewardBanner}<p class="unlock">{$rewardBanner}</p>{/if}
+        {#if $rewardBanner}<p class="unlock"><Rich text={$rewardBanner} /></p>{/if}
         <div class="sum-grid">
           {#each $runSummary.rows as [label, value]}
             <span class="sum-l">{label}</span><span class="sum-v">{value}</span>
@@ -473,15 +475,15 @@
           </div>
         {/if}
         <p class="hint-line">
-          {#each $runSummary.items as it}<span title={it.name}>{it.icon} </span>{/each}
+          {#each $runSummary.items as it}<span title={it.name}><Icon e={it.icon} /> </span>{/each}
           {$runSummary.items.length ? '·' : 'Nessun oggetto ·'} {$runSummary.build}
         </p>
         <div class="btn-row">
-          <button class="skill" on:click={endNew}>🔄 Nuova run</button>
-          <button class="ghost" on:click={() => openLog('last')}>📜 Leggi il registro</button>
-          <button class="ghost" on:click={() => gm && copyLog(gm.getLogText('last'))}>{copied ? '✔ Copiato' : '📋 Copia registro'}</button>
-          <button class="ghost" on:click={() => gm && downloadLog(gm.getLogText('last'))}>⬇️ Scarica</button>
-          <button class="ghost" on:click={endMenu}>☰ Menù</button>
+          <button class="skill" on:click={endNew}><Icon e="🔄" /> Nuova run</button>
+          <button class="ghost" on:click={() => openLog('last')}><Icon e="📜" /> Leggi il registro</button>
+          <button class="ghost" on:click={() => gm && copyLog(gm.getLogText('last'))}><Rich text={copied ? '✔ Copiato' : '📋 Copia registro'} /></button>
+          <button class="ghost" on:click={() => gm && downloadLog(gm.getLogText('last'))}><Icon e="⬇" /> Scarica</button>
+          <button class="ghost" on:click={endMenu}><Icon e="☰" /> Menù</button>
         </div>
       </div>
     </div>
@@ -497,15 +499,15 @@
           {#if $menuInfo.hasSave || $menuInfo.inProgress}
             <button class="skill" on:click={() => gm?.resumeFromMenu()}>
               ▶ {$menuInfo.inProgress ? 'Riprendi' : 'Continua'}
-              <small>{$menuInfo.saveLabel} · 💰 {$menuInfo.gold}</small>
+              <small>{$menuInfo.saveLabel} · <Icon e="💰" /> {$menuInfo.gold}</small>
             </button>
           {/if}
           <button class={$menuInfo.hasSave || $menuInfo.inProgress ? 'ghost' : 'skill'} on:click={startNew}>
-            {newArmed ? 'Sicuro? Perdi la run attuale' : '⚔️ Nuova run'}
+            <Rich text={newArmed ? 'Sicuro? Perdi la run attuale' : '⚔️ Nuova run'} />
           </button>
-          <button class="ghost" on:click={() => (howTo = true)}>❓ Come si gioca</button>
-          <button class="ghost" disabled={!$menuInfo.inProgress && !$menuInfo.hasSave} on:click={() => openLog('current')}>📜 Registro della run in corso</button>
-          <button class="ghost" disabled={!$menuInfo.hasLastLog} on:click={() => openLog('last')}>🗂️ Registro dell'ultima run</button>
+          <button class="ghost" on:click={() => (howTo = true)}><Icon e="❓" /> Come si gioca</button>
+          <button class="ghost" disabled={!$menuInfo.inProgress && !$menuInfo.hasSave} on:click={() => openLog('current')}><Icon e="📜" /> Registro della run in corso</button>
+          <button class="ghost" disabled={!$menuInfo.hasLastLog} on:click={() => openLog('last')}><Icon e="🗂" /> Registro dell'ultima run</button>
         </div>
         <p class="hint-line">Il registro annota ogni turno: copialo e mandamelo dopo una partita.</p>
       </div>
@@ -516,16 +518,17 @@
   {#if howTo}
     <div class="overlay menu" on:click|self={() => (howTo = false)}>
       <div class="overlay-box howto">
-        <h2>❓ Come si gioca</h2>
+        <h2><Icon e="❓" /> Come si gioca</h2>
         <ul>
           <li><b>Ogni turno</b> i dadi della borsa vengono lanciati. Il danno è (Forza + facce normali) × moltiplicatori × azione.</li>
           <li><b>La mano:</b> a ogni turno peschi 5 dadi dalla borsa e li tiri una volta sola. Ne giochi 3: tocca un dado per giocarlo o lasciarlo in panchina (i dadi smorzati non contano). La scelta di partenza è quella che fa più danno con lo Sgancio, ma per una Parata o una Bava può convenire cambiarla. I lanci extra della ricorsione seguono il loro dado e non occupano slot.</li>
           <li><b>Azioni</b> (tasti <kbd>1</kbd>-<kbd>4</kbd>): Sgancio (colpo sicuro), Parata (scudo che rimbalza se il nemico attacca), Bava (veleno forte, ignora lo scudo), Carica (salti il turno, tieni le facce, il lancio dopo vale ×1.5). Leggi sempre l'intento del nemico.</li>
-          <li><b>Facce incantate:</b> ☠ veleno, 🛡 scudo, 🔥 fuoco. Se escono insieme reagiscono: Vapori (☠🔥), Scudo ardente (🛡🔥), Spore (☠🛡).</li>
+          <li><b>Facce incantate:</b> <Icon e="☠" /> veleno, <Icon e="🛡" /> scudo, <Icon e="🔥" /> fuoco. Se escono insieme reagiscono: Vapori (<Icon e="☠" /><Icon e="🔥" />), Scudo ardente (<Icon e="🛡" /><Icon e="🔥" />), Spore (<Icon e="☠" /><Icon e="🛡" />).</li>
           <li><b>Dopo ogni incontro</b> scegli una porta: Mercante (oggetti su tre livelli di rarità, facce, dadi, pozioni, e un rilancio del banco che costa sempre di più) o Forgia (migliora le facce). Forza e Vitalità crescono da sole a ogni vittoria. Una parte dell'oro che non spendi ti torna come interesse. Un incontro su cinque è un Campione o un Boss, con sconti e bottino migliori.</li>
           <li><b>Gli HP restano:</b> +20% dopo ogni vittoria, pieni dopo Campioni e Boss. 5 oggetti al massimo, rivendibili a metà prezzo.</li>
           <li>3 Atti da 10 incontri. Se cadi la run finisce, ma i dadi sbloccati restano.</li>
         </ul>
+        <p class="credits">Icone: <a href="https://game-icons.net" target="_blank" rel="noopener">game-icons.net</a> (Lorc, Delapouite e altri autori), licenza CC BY 3.0.</p>
         <button class="skill" on:click={() => (howTo = false)}>Ho capito</button>
       </div>
     </div>
@@ -535,11 +538,11 @@
   {#if logText !== null}
     <div class="overlay menu">
       <div class="overlay-box logbox">
-        <h2>📜 Registro</h2>
+        <h2><Icon e="📜" /> Registro</h2>
         <pre class="logtext">{logText}</pre>
         <div class="btn-row">
-          <button class="skill" on:click={() => logText && copyLog(logText)}>{copied ? '✔ Copiato' : '📋 Copia tutto'}</button>
-          <button class="ghost" on:click={() => logText && downloadLog(logText)}>⬇️ Scarica .txt</button>
+          <button class="skill" on:click={() => logText && copyLog(logText)}><Rich text={copied ? '✔ Copiato' : '📋 Copia tutto'} /></button>
+          <button class="ghost" on:click={() => logText && downloadLog(logText)}><Icon e="⬇" /> Scarica .txt</button>
           <button class="ghost" on:click={() => (logText = null)}>Chiudi</button>
         </div>
       </div>
@@ -652,8 +655,8 @@
   .f-pow small { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 2px; }
   .f-pow b { color: var(--gold); font-size: 28px; font-weight: 700; }
   .side { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; justify-content: flex-end; }
-  .slots { color: #ffe2a8; font-weight: 700; display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
-  .slots small { font-weight: 400; font-size: 11px; color: var(--muted); }
+  .hand-slots { color: #ffe2a8; font-weight: 700; display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
+  .hand-slots small { font-weight: 400; font-size: 11px; color: var(--muted); }
   .card-slot { display: flex; align-items: center; gap: 4px; padding: 2px; }
   .chip.benched { opacity: 0.4; filter: grayscale(0.6); }
   .chip.extra { font-size: 15px; min-width: 0; padding: 3px 9px; }
@@ -675,7 +678,7 @@
   .card:focus-visible { outline: 3px solid var(--cyan); outline-offset: 2px; }
   .card:disabled { opacity: 0.4; cursor: default; filter: saturate(0.5); }
   .key { position: absolute; top: 6px; left: 8px; }
-  .c-icon { font-size: 34px; line-height: 1; }
+  .c-icon { font-size: 34px; line-height: 1; } .c-icon :global(.gi) { width: 1em; height: 1em; vertical-align: 0; }
   .c-name { font-size: 15px; font-weight: 700; text-align: center; }
   .c-preview { font-family: var(--num); font-size: 20px; font-weight: 700; color: var(--gold); text-align: center; min-height: 28px; }
   .c-alert { font-size: 12px; font-weight: 700; text-align: center; }
@@ -735,6 +738,8 @@
   @media (max-width: 760px) { .overlay-box { padding: 18px 14px; width: calc(100% - 24px); box-sizing: border-box; } .shop-box, .forge-box { min-width: 0; } }
 
   /* ---- Meta: shop ---- */
+  .credits { font-size: 12px; color: var(--muted); margin: 8px 0; }
+  .credits a { color: var(--cyan); }
   .unlock { color: #7dff9b; font-weight: bold; }
   .shop-box { min-width: 420px; }
   .offers { display: flex; flex-direction: column; gap: 8px; }
