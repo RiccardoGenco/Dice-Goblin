@@ -1,6 +1,6 @@
 import Decimal from 'break_infinity.js';
 import { GoblinDie } from './GoblinDie';
-import { DieFace, FaceType, Rarity } from './types';
+import { DieFace, FaceEffect, FaceType, Rarity } from './types';
 
 /* ============================================================
  * diceCatalog — Sblocchi orizzontali (MVP Specs §1, Opzione C)
@@ -15,6 +15,7 @@ import { DieFace, FaceType, Rarity } from './types';
 export interface FaceBlueprint {
   value: number;
   type: FaceType;
+  effect?: FaceEffect;
 }
 
 export interface DieBlueprint {
@@ -73,6 +74,22 @@ export const UNLOCKABLE_DICE: DieBlueprint[] = [
       { value: 1, type: FaceType.RECURSIVE }
     ]
   }
+  ,
+  {
+    id: 'dado-prisma',
+    name: 'Dado Prisma',
+    icon: '💠',
+    description: 'Una faccia di veleno, una di scudo e una di fuoco sullo stesso dado (sblocco: Vendetta compiuta)',
+    rarity: Rarity.EPICO,
+    faces: [
+      { value: 8, type: FaceType.NORMAL },
+      { value: 10, type: FaceType.NORMAL },
+      { value: 12, type: FaceType.NORMAL, effect: 'veleno' },
+      { value: 12, type: FaceType.NORMAL, effect: 'scudo' },
+      { value: 12, type: FaceType.NORMAL, effect: 'fuoco' },
+      { value: 3, type: FaceType.MULTIPLIER }
+    ]
+  }
 ];
 
 /** Mappa Atto completato -> id del dado sbloccato */
@@ -90,7 +107,8 @@ export function getBlueprint(id: string): DieBlueprint | undefined {
 export function createDieFromBlueprint(bp: DieBlueprint): GoblinDie {
   const faces: DieFace[] = bp.faces.map(f => ({
     value: new Decimal(f.value),
-    type: f.type
+    type: f.type,
+    ...(f.effect ? { effect: f.effect } : {})
   }));
   const die = new GoblinDie(bp.rarity, faces);
   die.blueprintId = bp.id;

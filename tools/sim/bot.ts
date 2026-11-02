@@ -7,6 +7,7 @@ import { Forge } from '../../src/core/Forge';
 import { BattleEngine } from '../../src/core/BattleEngine';
 import { Shop } from '../../src/core/Shop';
 import { RELICS } from '../../src/core/equipment';
+import { buildStarterBag, getBag } from '../../src/core/meta';
 import { DoorKind, REST_HEAL, pickRelics, pickDoors, pickEvent, pickEliteRewards, weakestSlot } from '../../src/core/crossroad';
 import { EquipmentManager, findItem } from '../../src/core/equipment';
 import { BALANCE, BattleState, FaceType, IntentType, Rarity, SkillId, seededRNG } from '../../src/core/types';
@@ -44,24 +45,7 @@ export interface FightLog {
 export interface RunResult { diedAt: number; log: FightLog[]; items: string[]; gold: number; doors?: Record<string, number> }
 
 function makeBag(rng: ReturnType<typeof seededRNG>): GoblinDie[] {
-  const special = [
-    { value: new Decimal(5), type: FaceType.NORMAL }, { value: new Decimal(10), type: FaceType.NORMAL },
-    { value: new Decimal(2), type: FaceType.MULTIPLIER }, { value: new Decimal(3), type: FaceType.MULTIPLIER },
-    { value: new Decimal(2), type: FaceType.BUFF_STR }, { value: new Decimal(1), type: FaceType.RECURSIVE }
-  ];
-  const bag = [
-    new GoblinDie(Rarity.COMUNE, undefined, rng), new GoblinDie(Rarity.NON_COMUNE, undefined, rng),
-    new GoblinDie(Rarity.RARO, undefined, rng), new GoblinDie(Rarity.EPICO, undefined, rng),
-    new GoblinDie(Rarity.LEGGENDARIO, special, rng)
-  ];
-  // come buildBag del gioco: facce incantate di partenza
-  const fx: [number, number, 'veleno' | 'scudo' | 'fuoco'][] =
-    [[0, 4, 'veleno'], [0, 5, 'fuoco'], [1, 4, 'scudo'], [1, 5, 'veleno'], [2, 4, 'fuoco'], [2, 5, 'scudo']];
-  for (const [d, f, e] of fx) {
-    const face = bag[d]!.faces[f]!;
-    if (face.type === FaceType.NORMAL) face.effect = e;
-  }
-  return bag;
+  return buildStarterBag((globalThis as any).process?.env?.SIM_BAG ?? 'classica', rng);
 }
 
 async function fight(
@@ -231,6 +215,8 @@ export async function simulateRun(seed: number, opts: BotOptions): Promise<RunRe
   const forge = new Forge();
   const shop = new Shop(seededRNG(seed * 31));
   const eq = new EquipmentManager();
+  const startItem = getBag((globalThis as any).process?.env?.SIM_BAG ?? 'classica').item;
+  if (startItem) eq.equip(findItem(startItem)!);
   let forgeNext = false;
   const seen: string[] = [];
   const doors: Record<string, number> = { shop: 0, forge: 0, rest: 0, elite: 0, event: 0 };

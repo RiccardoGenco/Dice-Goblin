@@ -218,3 +218,11 @@ export const runSummary = writable<RunSummaryView | null>(null);
 /* ---- Impostazioni del giocatore: suoni, modalità veloce, introduzione ---- */
 export const settings = writable<Settings>(loadSettings());
 settings.subscribe(v => { sfx.muted = v.muted; saveSettings(v); });
+
+
+/* ---- Meta: borse e obiettivi ---- */
+export interface BagView { id: string; name: string; icon: string; description: string; locked: boolean; hint: string }
+export const bagOptions = writable<BagView[]>([]);
+export const bagPickerOpen = writable(false);
+export interface GoalView { id: string; name: string; description: string; done: boolean; progress: string; ratio: number; rewardText: string }
+export const goalsView = writable<GoalView[]>([]);

@@ -3,6 +3,7 @@ import { GoblinDie } from './GoblinDie';
 import { CombatantStats, DieFace, FaceType, Rarity } from './types';
 import { hydrateCombatantStats, hydrateDecimal, serializeDecimal } from './persistence';
 import { RunState, freshRunState } from './RunManager';
+import { MetaStats, freshMetaStats } from './meta';
 
 /* ============================================================
  * SaveManager — Persistenza run + meta (Piano commit 13)
@@ -18,6 +19,7 @@ import { RunState, freshRunState } from './RunManager';
 
 export const RUN_KEY = 'goblin-revenge:run';
 export const META_KEY = 'goblin-revenge:meta';
+export const STATS_KEY = 'goblin-revenge:stats';
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -164,6 +166,27 @@ export class SaveManager {
     } catch {
       return [];
     }
+  }
+
+  /** Statistiche permanenti per gli obiettivi */
+  public loadStats(): MetaStats {
+    const raw = this.storage.getItem(STATS_KEY);
+    const base = freshMetaStats();
+    if (!raw) return base;
+    try {
+      const p = JSON.parse(raw) as Partial<MetaStats>;
+      for (const k of Object.keys(base) as (keyof MetaStats)[]) {
+        const v = p[k];
+        if (typeof v === 'number' && Number.isFinite(v)) base[k] = v;
+      }
+      return base;
+    } catch {
+      return base;
+    }
+  }
+
+  public saveStats(s: MetaStats): void {
+    this.storage.setItem(STATS_KEY, JSON.stringify(s));
   }
 
   public addUnlock(blueprintId: string): string[] {

@@ -58,6 +58,9 @@ import {
   eventView,
   rewardChoices,
   rewardKind,
+  bagOptions,
+  bagPickerOpen,
+  goalsView,
   forgeSpecial,
   forgeOpsLeft,
   forgeVersion,
@@ -81,6 +84,7 @@ import {
   RunSummaryView
 } from './ui/stores';
 import { ACT_BOSSES, CLASS_SPRITES } from './ui/spriteCatalog';
+import { BAGS, GOALS, buildStarterBag, getBag, completedGoals, MetaStats } from '@core/meta';
 import { DoorKind, DOOR_META, REST_HEAL, ELITE_HP_MULT, ELITE_STR_MULT, pickDoors, pickEvent, pickEliteRewards, pickRelics, weakestSlot, EventDef } from '@core/crossroad';
 import { enemyProfileFor, EnemyProfile } from './core/enemies';
 import { sfx } from './audio';
@@ -161,6 +165,7 @@ export class GameManager {
     this.diceWorld = new DiceWorld(canvas);
     settings.subscribe(v => { this.diceWorld.timeScale = v.fast ? 2 : 1; });
     this.unlocks = this.saveMgr.loadUnlocks();
+    this.publishMeta();
 
     // Ripristino automatico della run salvata (fail-safe: se il
     // salvataggio è corrotto, loadRun ritorna null e si riparte)
@@ -294,35 +299,76 @@ export class GameManager {
   /** Da menù: nuova run (se non è ancora partito nulla e non c'è un salvataggio, parte subito) */
   public newRunFromMenu(): void {
     menuOpen.set(false);
+    if (this.unlockedBagIds().length > 1) { this.publishMeta(); bagPickerOpen.set(true); return; }
     void this.newRun();
+  }
+
+  /** Dal selettore: nuova run con la borsa scelta (solo se sbloccata) */
+  public chooseBag(id: string): void {
+    if (!this.unlockedBagIds().includes(id)) return;
+    bagPickerOpen.set(false);
+    void this.newRun(id);
   }
 
   /* ---------------- Setup battaglia ---------------- */
 
-  private buildBag(): void {
-    const special: DieFace[] = [
-      { value: new Decimal(5), type: FaceType.NORMAL },
-      { value: new Decimal(10), type: FaceType.NORMAL },
-      { value: new Decimal(2), type: FaceType.MULTIPLIER },
-      { value: new Decimal(3), type: FaceType.MULTIPLIER },
-      { value: new Decimal(2), type: FaceType.BUFF_STR },
-      { value: new Decimal(1), type: FaceType.RECURSIVE }
-    ];
-    this.bag = [
-      new GoblinDie(Rarity.COMUNE),
-      new GoblinDie(Rarity.NON_COMUNE),
-      new GoblinDie(Rarity.RARO),
-      new GoblinDie(Rarity.EPICO),
-      new GoblinDie(Rarity.LEGGENDARIO, special)
-    ];
-    // Facce incantate di partenza: due per effetto sui primi tre dadi,
-    // così veleno, scudo e fuoco (e le loro reazioni) si vedono subito
-    const starter: [number, number, FaceEffect][] = [
-      [0, 4, 'veleno'], [0, 5, 'fuoco'],
-      [1, 4, 'scudo'], [1, 5, 'veleno'],
-      [2, 4, 'fuoco'], [2, 5, 'scudo']
-    ];
-    for (const [d, f, effect] of starter) this.bag[d]!.faces[f]!.effect = effect;
+  private bagId = 'classica';
+
+  private buildBag(bagId = 'classica'): void {
+    this.bagId = getBag(bagId).id;
+    this.bag = buildStarterBag(this.bagId);
+  }
+
+  /** Oggetto di partenza della borsa scelta */
+  private equipBagItem(): void {
+    const id = getBag(this.bagId).item;
+    const item = id ? findItem(id) : undefined;
+    if (item) this.equipment.equip(item);
+  }
+
+  /* ---------------- Meta: borse e obiettivi ---------------- */
+
+  private metaStats: MetaStats = this.saveMgr.loadStats();
+
+  private unlockedBagIds(): string[] {
+    return ['classica', ...BAGS.filter(b => this.unlocks.includes(`bag:${b.id}`)).map(b => b.id)];
+  }
+
+  private publishMeta(): void {
+    const open = this.unlockedBagIds();
+    bagOptions.set(BAGS.map(b => {
+      const goal = GOALS.find(g => g.reward.bag === b.id);
+      return { id: b.id, name: b.name, icon: b.icon, description: b.description,
+        locked: !open.includes(b.id), hint: goal ? `Sblocco: ${goal.name} — ${goal.description}` : '' };
+    }));
+    goalsView.set(GOALS.map(g => {
+      const [cur, goal] = g.progress(this.metaStats);
+      return { id: g.id, name: g.name, description: g.description, done: this.unlocks.includes(`goal:${g.id}`),
+        progress: `${Math.min(cur, goal)}/${goal}`, ratio: Math.min(1, cur / goal), rewardText: g.rewardText };
+    }));
+  }
+
+  /** Aggiorna le statistiche permanenti e consegna i premi degli obiettivi nuovi */
+  private updateMeta(change: (s: MetaStats) => void): void {
+    change(this.metaStats);
+    this.saveMgr.saveStats(this.metaStats);
+    const news: string[] = [];
+    for (const id of completedGoals(this.metaStats)) {
+      if (this.unlocks.includes(`goal:${id}`)) continue;
+      const g = GOALS.find(x => x.id === id)!;
+      this.unlocks = this.saveMgr.addUnlock(`goal:${id}`);
+      if (g.reward.bag) this.unlocks = this.saveMgr.addUnlock(`bag:${g.reward.bag}`);
+      if (g.reward.die) this.unlocks = this.saveMgr.addUnlock(g.reward.die);
+      pushLog(`🏅 Obiettivo: ${g.name} — sbloccato: ${g.rewardText}`);
+      this.log.add('result', `Obiettivo completato: ${g.name} → ${g.rewardText}`);
+      news.push(`🏅 ${g.name}: sbloccato ${g.rewardText}!`);
+    }
+    if (news.length) {
+      const prev = get(rewardBanner);
+      rewardBanner.set([prev, ...news].filter(Boolean).join('  ·  '));
+      sfx.victory();
+    }
+    this.publishMeta();
   }
 
   public newBattle(level: number): void {
@@ -673,6 +719,13 @@ export class GameManager {
     } else {
       rewardBanner.set(null);
     }
+
+    this.updateMeta(s => {
+      if (wasElite) s.elites++;
+      if (wasActBoss) s.bosses++;
+      s.bestAct = Math.max(s.bestAct, this.run.state.act);
+      if (result === 'run-completed') s.wins++;
+    });
 
     if (result === 'run-completed') {
       this.endRun('vittoria');
@@ -1273,7 +1326,7 @@ export class GameManager {
 
   /** Nuova run da zero: reset di stat, borsa, oro e slot.
    *  Gli sblocchi META restano: il pool dadi è più ricco. */
-  public newRun(): Promise<void> {
+  public newRun(bagId = 'classica'): Promise<void> {
     // la run lasciata a metà si chiude nel registro come abbandonata
     if (!this.log.finished && this.log.stats.turns > 0) this.endRun('abbandonata');
     runSummary.set(null);
@@ -1285,8 +1338,11 @@ export class GameManager {
     this.playerStats.lck = 10;
     for (let i = 0; i < this.equipment.slots.length; i++) this.equipment.unequip(i);
     equipVersion.update(v => v + 1);
-    this.buildBag();
+    this.buildBag(bagId);
+    this.equipBagItem();
+    this.syncEquipment();
     this.log = this.freshLog();
+    this.log.add('run', `Borsa: ${getBag(this.bagId).name}${getBag(this.bagId).item ? ` (parti con ${findItem(getBag(this.bagId).item!)?.name})` : ''}`);
     this.newBattle(0);
     this.publishMenuInfo();
     return this.start();

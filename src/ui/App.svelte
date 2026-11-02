@@ -14,7 +14,7 @@
     overflowActive, settings, handSelection, handInfo, diceBusy, effectsView, battleResult, logLines, equipVersion,
     menuOpen, menuInfo, runSummary,
     uiPhase, goldView, runLabel, shopOffers, shopInfo, shopSpecial, rewardBanner,
-    crossroadSpecial, doors, eventView, rewardChoices, rewardKind, forgeSpecial, forgeOpsLeft, forgeVersion,
+    crossroadSpecial, doors, eventView, rewardChoices, rewardKind, bagOptions, bagPickerOpen, goalsView, forgeSpecial, forgeOpsLeft, forgeVersion,
     chainView, skillPreview, skillHints, rollNonce, runProgress
   } from './stores';
 
@@ -125,6 +125,7 @@
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   }
+  let goalsOpen = false;
   function startNew(): void {
     // con una run in corso serve un secondo clic
     if (($menuInfo.hasSave || $menuInfo.inProgress) && !newArmed) {
@@ -586,11 +587,63 @@
           <button class={$menuInfo.hasSave || $menuInfo.inProgress ? 'ghost' : 'skill'} on:click={startNew}>
             <Rich text={newArmed ? 'Sicuro? Perdi la run attuale' : '⚔️ Nuova run'} />
           </button>
+          <button class="ghost" on:click={() => (goalsOpen = true)}><Icon e="🏅" /> Obiettivi e borse</button>
           <button class="ghost" on:click={() => (howTo = true)}><Icon e="❓" /> Come si gioca</button>
           <button class="ghost" disabled={!$menuInfo.inProgress && !$menuInfo.hasSave} on:click={() => openLog('current')}><Icon e="📜" /> Registro della run in corso</button>
           <button class="ghost" disabled={!$menuInfo.hasLastLog} on:click={() => openLog('last')}><Icon e="🗂" /> Registro dell'ultima run</button>
         </div>
         <p class="hint-line">Il registro annota ogni turno: copialo e mandamelo dopo una partita.</p>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ===== Scelta della borsa ===== -->
+  {#if $bagPickerOpen}
+    <div class="overlay menu">
+      <div class="overlay-box menu-box bag-box">
+        <h2>Scegli la borsa</h2>
+        <p class="hint-line">Ogni borsa spinge una build diversa.</p>
+        <div class="bags">
+          {#each $bagOptions as b}
+            <button class="door bag" class:locked={b.locked} disabled={b.locked} on:click={() => gm?.chooseBag(b.id)}>
+              <span class="icon"><Icon e={b.icon} /></span>
+              <span class="label">{b.name}</span>
+              <span class="hint">{b.locked ? b.hint : b.description}</span>
+            </button>
+          {/each}
+        </div>
+        <button class="ghost" on:click={() => { bagPickerOpen.set(false); menuOpen.set(true); }}>Indietro</button>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ===== Obiettivi ===== -->
+  {#if goalsOpen}
+    <div class="overlay menu" on:click|self={() => (goalsOpen = false)}>
+      <div class="overlay-box menu-box bag-box">
+        <h2><Icon e="🏅" /> Obiettivi</h2>
+        <p class="hint-line">Completarli sblocca borse di partenza e dadi per il negozio, per sempre.</p>
+        <div class="goals">
+          {#each $goalsView as g}
+            <div class="goal" class:done={g.done}>
+              <div class="goal-top"><b>{g.name}</b><span>{g.done ? 'Fatto' : g.progress}</span></div>
+              <div class="goal-desc">{g.description}</div>
+              <div class="goal-bar"><div style="width:{g.ratio * 100}%"></div></div>
+              <div class="goal-reward">Premio: {g.rewardText}</div>
+            </div>
+          {/each}
+        </div>
+        <h3 class="bags-title">Borse</h3>
+        <div class="bags">
+          {#each $bagOptions as b}
+            <div class="door bag static" class:locked={b.locked}>
+              <span class="icon"><Icon e={b.icon} /></span>
+              <span class="label">{b.name}</span>
+              <span class="hint">{b.locked ? b.hint : b.description}</span>
+            </div>
+          {/each}
+        </div>
+        <button class="ghost" on:click={() => (goalsOpen = false)}>Chiudi</button>
       </div>
     </div>
   {/if}
@@ -883,6 +936,21 @@
   .door.elite { border-color: #ff6b5a; }
   .door .hint.warn { color: #ffb454; }
   .event-box { max-width: 560px; }
+  .bag-box { max-width: 720px; max-height: 92vh; overflow-y: auto; }
+  .bags { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 10px 0; }
+  .door.bag { width: 150px; padding: 12px 10px; }
+  .door.bag.locked { opacity: 0.45; filter: grayscale(0.7); }
+  .door.bag.static { cursor: default; }
+  .bags-title { margin: 14px 0 0; font-size: 14px; letter-spacing: 2px; color: #b9b2d9; }
+  .goals { display: flex; flex-direction: column; gap: 8px; text-align: left; }
+  .goal { background: #1c1938; border: 1px solid #3a3470; border-radius: 10px; padding: 10px 12px; }
+  .goal.done { border-color: #4cc94c; background: #1f3d2a; }
+  .goal-top { display: flex; justify-content: space-between; }
+  .goal-desc { font-size: 13px; color: #cfc9ee; margin: 2px 0 6px; }
+  .goal-bar { height: 6px; background: #0f0d20; border-radius: 4px; overflow: hidden; }
+  .goal-bar div { height: 100%; background: #ffd34d; }
+  .goal.done .goal-bar div { background: #7dff9b; }
+  .goal-reward { font-size: 12px; color: #ffd34d; margin-top: 4px; }
   .event-opts { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
   .event-opt { width: 100%; padding: 12px 16px; }
   .door:disabled { opacity: 0.45; cursor: not-allowed; }
