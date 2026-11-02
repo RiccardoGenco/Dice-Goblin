@@ -1,11 +1,12 @@
 <script lang="ts">
+  import { get } from 'svelte/store';
   import Icon from './Icon.svelte';
   import Rich from './Rich.svelte';
   import { onDestroy } from 'svelte';
   import Sprite from './Sprite.svelte';
   import { SPRITES } from './spriteCatalog';
   import {
-    playerView, enemyView, intentView, intentQueue, bossRuleText, enemyInfo, stageFx, battleResult,
+    playerView, enemyView, intentView, intentQueue, bossRuleText, settings, enemyInfo, stageFx, battleResult,
     overflowActive, actLevel
   } from './stores';
 
@@ -19,7 +20,7 @@
   let enemyAnim = '';
   const timers = new Set<ReturnType<typeof setTimeout>>();
   const later = (fn: () => void, ms: number) => {
-    const t = setTimeout(() => { timers.delete(t); fn(); }, ms);
+    const t = setTimeout(() => { timers.delete(t); fn(); }, ms / (get(settings).fast ? 2 : 1));
     timers.add(t);
   };
 
@@ -126,21 +127,37 @@
     <div class="nums">{$enemyView.hp} / {$enemyView.maxHp}</div>
   </div>
 
+  <!-- ===== Schema del nemico: cosa farà ora e nei prossimi turni ===== -->
+  {#if $intentView && !dead && !lost}
+    <div class="track" aria-label="Schema del nemico">
+      <div class="track-title">{$enemyInfo.name} <span>agirà così</span></div>
+      <div class="track-row">
+        {#key $intentView.label + $intentView.value}
+          <div class="tcard now k-{$intentView.kind}" title="Cosa fa il nemico alla fine di questo turno">
+            <span class="tag">Questo turno</span>
+            <span class="ti"><Icon e={$intentView.icon} /></span>
+            <span class="tl"><Rich text={$intentView.label} /></span>
+            <b class="tv">{$intentView.value}</b>
+            <span class="tip">{$intentView.tip}</span>
+          </div>
+        {/key}
+        {#each $intentQueue as q, i (i + q.label + q.value)}
+          <span class="chev" aria-hidden="true">›</span>
+          <div class="tcard next n{i} k-{q.kind}" title="Tra {i + 1} turn{i === 0 ? 'o' : 'i'}">
+            <span class="tag">{i === 0 ? 'Poi' : i === 1 ? 'Dopo' : 'Ancora'}</span>
+            <span class="ti"><Icon e={q.icon} /></span>
+            <span class="tl"><Rich text={q.label} /></span>
+            <b class="tv">{q.value}</b>
+          </div>
+        {/each}
+        <span class="chev loop" title="Poi lo schema ricomincia">↺</span>
+      </div>
+      {#if $bossRuleText}<div class="rule">{$bossRuleText}</div>{/if}
+    </div>
+  {/if}
+
   <!-- ===== Nemico (destra) ===== -->
   <div class="slot enemy-slot">
-    {#if $intentView && !dead}
-      <div class="bubble" title="Intento del prossimo turno">
-        <span class="bi"><Icon e={$intentView.icon} /></span>
-        <span class="bl"><Rich text={$intentView.label} /></span>
-        <b>{$intentView.value}</b>
-      </div>
-      {#if $intentQueue.length}
-        <div class="queue" title="Prossimi intenti">
-          {#each $intentQueue as q, i}<span class="q q{i}"><Icon e={q.icon} /> {q.value}</span>{/each}
-        </div>
-      {/if}
-      {#if $bossRuleText}<div class="rule">{$bossRuleText}</div>{/if}
-    {/if}
     <div class="body enemy-body {enemyAnim}" class:dead style="filter:{enemyFilter}">
       <Sprite id={$enemyInfo.sprite} {scale} tint={$enemyInfo.tint} />
     </div>
@@ -268,22 +285,35 @@
   .pfill { background: linear-gradient(90deg, #4cc94c, #7dff9b); }
   .nums { font-family: ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace; font-size: calc(12px * var(--ui)); opacity: 0.85; text-align: right; text-shadow: 0 1px 2px #000; }
 
-  .bubble {
-    position: relative; z-index: 3; margin-bottom: 6px; padding: 3px 12px;
-    background: #2b1520; border: 2px solid #ff5c8a; border-radius: 10px;
-    display: flex; gap: 6px; align-items: baseline; font-size: calc(15px * var(--ui));
-    animation: bob 1.8s ease-in-out infinite;
+  /* ---- Schema del nemico ---- */
+  .track {
+    position: absolute; top: calc(8px * var(--ui)); left: 50%; transform: translateX(-50%);
+    z-index: 4; display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none;
   }
-  .bubble::after {
-    content: ''; position: absolute; left: 50%; bottom: -8px; margin-left: -6px;
-    border: 6px solid transparent; border-top-color: #ff5c8a; border-bottom: 0;
+  .track-title { font-size: calc(11px * var(--ui)); letter-spacing: 2px; text-transform: uppercase; color: #d9cffb; text-shadow: 0 1px 2px #000; }
+  .track-title span { color: #8f86b8; }
+  .track-row { display: flex; align-items: stretch; gap: calc(4px * var(--ui)); }
+  .tcard {
+    --c: #ff5c8a; position: relative; display: grid; grid-template-rows: auto auto auto auto; justify-items: center; align-content: center;
+    background: linear-gradient(180deg, rgba(34,22,46,0.92), rgba(20,14,30,0.94)); border: 2px solid var(--c);
+    border-radius: 10px; padding: calc(4px * var(--ui)) calc(10px * var(--ui)); min-width: calc(74px * var(--ui)); gap: 1px;
+    box-shadow: 0 0 calc(10px * var(--ui)) color-mix(in srgb, var(--c) 45%, transparent), inset 0 0 10px rgba(0,0,0,0.5);
   }
-  .queue { display: flex; gap: 6px; margin-bottom: 4px; font-size: calc(12px * var(--ui)); z-index: 3; }
-  .q { padding: 1px 7px; background: rgba(43,21,32,0.8); border: 1px solid #7a3550; border-radius: 8px; opacity: 0.85; }
-  .q1 { opacity: 0.6; }
-  .rule { z-index: 3; font-size: calc(11px * var(--ui)); max-width: 220px; text-align: center; color: #ffb3c6; margin-bottom: 4px; text-shadow: 0 1px 2px #000; }
-  .bl { opacity: 0.8; font-size: calc(12px * var(--ui)); }
-  @keyframes bob { 50% { transform: translateY(-3px); } }
+  .tcard.k-attack { --c: #ff5c6c; } .tcard.k-shield { --c: #6cc4ff; } .tcard.k-poison { --c: #8dff5c; } .tcard.k-buff { --c: #ffd84c; }
+  .tcard .tag { font-size: calc(9px * var(--ui)); letter-spacing: 1.5px; text-transform: uppercase; color: var(--c); }
+  .tcard .ti { font-size: calc(22px * var(--ui)); line-height: 1.1; }
+  .tcard .tl { font-size: calc(11px * var(--ui)); color: #eee9ff; white-space: nowrap; }
+  .tcard .tv { font-size: calc(15px * var(--ui)); color: #fff; text-shadow: 0 0 8px var(--c); }
+  .tcard .tip { font-size: calc(10px * var(--ui)); color: #ffe9a8; white-space: nowrap; }
+  .tcard.now { min-width: calc(128px * var(--ui)); transform: scale(1.06); animation: nowpulse 1.6s ease-in-out infinite, tin 0.35s cubic-bezier(.2,1.4,.4,1) both; }
+  .tcard.now .ti { font-size: calc(30px * var(--ui)); } .tcard.now .tv { font-size: calc(22px * var(--ui)); }
+  .tcard.next { opacity: 0.88; animation: tin 0.35s ease-out both; }
+  .tcard.n1 { opacity: 0.72; } .tcard.n2 { opacity: 0.55; }
+  .chev { align-self: center; color: #8f86b8; font-size: calc(20px * var(--ui)); }
+  .chev.loop { font-size: calc(15px * var(--ui)); opacity: 0.55; }
+  .rule { font-size: calc(11px * var(--ui)); max-width: 360px; text-align: center; color: #ffb3c6; text-shadow: 0 1px 2px #000; }
+  @keyframes nowpulse { 50% { box-shadow: 0 0 calc(20px * var(--ui)) color-mix(in srgb, var(--c) 80%, transparent), inset 0 0 10px rgba(0,0,0,0.5); } }
+  @keyframes tin { from { transform: translateY(-8px) scale(0.9); opacity: 0; } }
 
   /* numeri di danno */
   .floater {
@@ -360,6 +390,6 @@
     .player-slot { left: 2%; } .enemy-slot { right: 2%; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .near, .fog, .bubble, .shake, .ovf-tag, .burst.overflow .b-main { animation: none; }
+    .near, .fog, .tcard, .shake, .ovf-tag, .burst.overflow .b-main { animation: none; }
   }
 </style>

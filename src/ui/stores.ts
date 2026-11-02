@@ -1,3 +1,4 @@
+import { sfx, loadSettings, saveSettings, Settings } from '../audio';
 import { writable } from 'svelte/store';
 import { BattleState } from '@core/types';
 import type { SpriteId, TintId } from './spriteCatalog';
@@ -22,6 +23,10 @@ export interface IntentView {
   icon: string;
   label: string;
   value: string;
+  /** famiglia dell'intento (colore della carta) */
+  kind: 'attack' | 'shield' | 'poison' | 'buff';
+  /** consiglio breve su come rispondere */
+  tip: string;
 }
 
 export interface DieChip {
@@ -153,6 +158,12 @@ export function emitFx(
   target: StageFx['target'], kind: StageFx['kind'], text: string, power = 0
 ): void {
   stageFx.set({ id: ++fxCounter, target, kind, text, power });
+  // il suono segue lo stesso evento che anima il palco
+  if (kind === 'hit') sfx.hit(power);
+  else if (kind === 'shield') sfx.shield();
+  else if (kind === 'poison') sfx.poison();
+  else if (kind === 'mult') sfx.mult(power);
+  else if (kind === 'overflow') sfx.overflow();
 }
 
 /* ---- Catena di dadi: anteprima per il giocatore ---- */
@@ -186,3 +197,7 @@ export interface RunSummaryView {
   build: string;
 }
 export const runSummary = writable<RunSummaryView | null>(null);
+
+/* ---- Impostazioni del giocatore: suoni, modalità veloce, introduzione ---- */
+export const settings = writable<Settings>(loadSettings());
+settings.subscribe(v => { sfx.muted = v.muted; saveSettings(v); });

@@ -38,6 +38,7 @@ import {
   rolledChips,
   overflowActive,
   handSelection,
+  settings,
   handInfo,
   diceBusy,
   effectsView,
@@ -59,6 +60,7 @@ import {
   pushLog,
   CombatantView,
   DieChip,
+  IntentView,
   ShopOfferView,
   ForgeQuoteView,
   ForgeDieView,
@@ -75,6 +77,7 @@ import {
 } from './ui/stores';
 import { ACT_BOSSES, CLASS_SPRITES } from './ui/spriteCatalog';
 import { enemyProfileFor, EnemyProfile } from './core/enemies';
+import { sfx } from './audio';
 
 /* ============================================================
  * GameManager — Il collante (Piano Fase 5)
@@ -94,12 +97,17 @@ const CHIP_CLASS: Record<FaceType, string> = {
   [FaceType.RECURSIVE]: 'recursive'
 };
 
-const INTENT_META: Record<IntentType, { icon: string; label: string }> = {
-  [IntentType.ATTACK]: { icon: '⚔️', label: 'Attacco' },
-  [IntentType.SHIELD]: { icon: '🛡️', label: 'Scudo' },
-  [IntentType.POISON]: { icon: '☠️', label: 'Veleno' },
-  [IntentType.BUFF]: { icon: '💪', label: 'Potenziamento' }
+const INTENT_META: Record<IntentType, { icon: string; label: string; kind: IntentView['kind']; tip: string }> = {
+  [IntentType.ATTACK]: { icon: '⚔️', label: 'Attacco', kind: 'attack', tip: 'Para o chiudi in fretta' },
+  [IntentType.SHIELD]: { icon: '🛡️', label: 'Scudo', kind: 'shield', tip: 'Non para: colpisci' },
+  [IntentType.POISON]: { icon: '☠️', label: 'Veleno', kind: 'poison', tip: 'Lo scudo non serve' },
+  [IntentType.BUFF]: { icon: '💪', label: 'Potenziamento', kind: 'buff', tip: 'Non attacca: colpisci' }
 };
+
+function intentToView(i: EnemyIntent): IntentView {
+  const m = INTENT_META[i.type];
+  return { icon: m.icon, label: i.tag ?? m.label, value: formatBigNumber(i.value), kind: m.kind, tip: m.tip };
+}
 
 export class GameManager {
   private engine!: BattleEngine;
@@ -145,6 +153,7 @@ export class GameManager {
 
   constructor(canvas: HTMLCanvasElement) {
     this.diceWorld = new DiceWorld(canvas);
+    settings.subscribe(v => { this.diceWorld.timeScale = v.fast ? 2 : 1; });
     this.unlocks = this.saveMgr.loadUnlocks();
 
     // Ripristino automatico della run salvata (fail-safe: se il
@@ -495,16 +504,8 @@ export class GameManager {
       this.log.stats.turns++;
       this.log.add('turn', `Turno ${this.turnNo} — ${this.state()}`);
       this.log.add('enemy', `Intento: ${meta.icon} ${meta.label} ${formatBigNumber(intent.value)}`);
-      intentView.set({
-        icon: meta.icon,
-        label: intent.tag ?? meta.label,
-        value: formatBigNumber(intent.value)
-      });
-      intentQueue.set(this.engine.peekIntents(2).map(i => ({
-        icon: INTENT_META[i.type].icon,
-        label: i.tag ?? INTENT_META[i.type].label,
-        value: formatBigNumber(i.value)
-      })));
+      intentView.set(intentToView(intent));
+      intentQueue.set(this.engine.peekIntents(3).map(intentToView));
     });
 
     e.on('onDicesRolled', p => {
@@ -522,7 +523,9 @@ export class GameManager {
       // ← Il Visual Blocking Callback: la logica attende il 3D;
       // quando i dadi si fermano, il palco annuncia il moltiplicatore.
       p.waitUntilFinished = async () => {
+        sfx.roll(faces.length);
         await this.diceWorld.throwDice(sources, faces);
+        sfx.settle();
         this.diceWorld.setPlayed(new Set(this.engine.playedIndices));
         this.announceChain();
       };
@@ -562,6 +565,7 @@ export class GameManager {
 
     e.on('onCharge', p => {
       this.log.add('effect', `Carica: ${p.count as number} facce restano per il turno dopo (×1.5 al prossimo lancio)`);
+      sfx.charge();
       emitFx('player', 'shield', `⚡ ${p.count as number} facce`, 2);
       pushLog(`⚡ Carica: ${p.count as number} facce restano per il prossimo turno`);
     });
@@ -571,6 +575,7 @@ export class GameManager {
       this.log.stats.reactions++;
       this.log.add('effect', `Reazione ${r.icon} ${r.name}: ${r.text} (${formatBigNumber(p.amount as Decimal)})`);
       emitFx('center', 'mult', `${r.icon} ${r.name}`, 3);
+      sfx.reaction();
       pushLog(`⚗️ ${r.name}: ${r.text}`);
       this.refreshCombatants();
     });
@@ -599,9 +604,11 @@ export class GameManager {
       battleResult.set(p.winner === 'player' ? 'victory' : 'defeat');
       this.refreshCombatants();
       if (p.winner === 'player') {
+        sfx.victory();
         this.onVictory();
       } else {
         // Roguelike: la sconfitta chiude la run (gli sblocchi meta restano)
+        sfx.defeat();
         this.saveMgr.clearRun();
         this.endRun('sconfitta', this.enemyName);
       }
@@ -722,6 +729,7 @@ export class GameManager {
 
   public async useSkill(id: SkillId): Promise<void> {
     if (this.engine.state !== BattleState.WAIT_PLAYER_ACTION) return;
+    sfx.click();
     this.logAction(id);
     await this.engine.resolvePlayerAction(id);
     this.persistLog();
@@ -812,11 +820,13 @@ export class GameManager {
     if (this.engine.state !== BattleState.WAIT_PLAYER_ACTION) return;
     if (!this.engine.toggleCard(card)) {
       const e = this.engine;
+      sfx.denied();
       if (!e.selection.includes(card) && e.selection.length >= e.playSlots) {
         pushLog('🎲 Slot pieni: togli prima un dado giocato');
       }
       return;
     }
+    sfx.select(this.engine.selection.includes(card));
     this.log.stats.handChanges++;
     this.log.add('hand', `Mano cambiata: ${this.handChoiceText()}`);
     this.logEffectsLine(true);
@@ -934,14 +944,17 @@ export class GameManager {
     const offer = this.currentOffers.find(o => o.id === offerId);
     if (!offer) return;
     if (offer.kind === 'item' && this.equipment.freeSlots === 0) {
+      sfx.denied();
       pushLog('✋ Slot pieni: vendi un oggetto prima di comprarne un altro');
       return;
     }
     const isService = offer.kind === 'potion' || offer.kind === 'elixir';
     if (!this.run.spendGold(offer.cost, !isService)) {
+      sfx.denied();
       pushLog(`✋ Oro insufficiente per ${offer.label}`);
       return;
     }
+    sfx.coin();
     this.shop.apply(offer, {
       stats: this.playerStats,
       bag: this.bag,

@@ -36,6 +36,8 @@ interface ActiveDie {
 }
 
 export class DiceWorld {
+  /** 1 = normale, 2 = modalità veloce */
+  public timeScale = 1;
   public readonly scene = new THREE.Scene();
   public readonly camera: THREE.PerspectiveCamera;
   private readonly renderer: THREE.WebGLRenderer;
@@ -169,7 +171,7 @@ export class DiceWorld {
     // tempo massimo, i dadi vengono forzati nella posa finale e il
     // Visual Blocking Callback si sblocca comunque.
     return new Promise(resolve => {
-      const timer = setTimeout(() => this.forceSettle(), ROLL_TIMEOUT_MS);
+      const timer = setTimeout(() => this.forceSettle(), ROLL_TIMEOUT_MS / this.timeScale);
       this.resolveRoll = () => {
         clearTimeout(timer);
         resolve();
@@ -223,7 +225,7 @@ export class DiceWorld {
   private animate = (): void => {
     this.rafId = requestAnimationFrame(this.animate);
     const dt = Math.min(this.clock.getDelta(), 1 / 30);
-    this.world.step(1 / 60, dt, 3);
+    this.world.step(1 / 60, dt * this.timeScale, 8);
 
     let allSettled = this.active.length > 0;
 

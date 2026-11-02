@@ -11,7 +11,7 @@
   const TIER_NAME: Record<string, string> = { 'comune': 'Tier 1 · comune', 'non-comune': 'Tier 2 · non comune', 'raro': 'Tier 3 · raro' };
   import {
     playerView, enemyView, intentView, battleState, rolledChips,
-    overflowActive, handSelection, handInfo, diceBusy, effectsView, battleResult, logLines, equipVersion,
+    overflowActive, settings, handSelection, handInfo, diceBusy, effectsView, battleResult, logLines, equipVersion,
     menuOpen, menuInfo, runSummary,
     uiPhase, goldView, runLabel, shopOffers, shopInfo, shopSpecial, rewardBanner,
     crossroadSpecial, forgeSpecial, forgeOpsLeft, forgeVersion,
@@ -169,6 +169,31 @@
     { id: SkillId.CARICA,          icon: '⚡', hint: 'Salta il turno: tieni le facce, poi ×1.5' }
   ];
 
+  /* velocità: tutte le animazioni CSS vanno al doppio in modalità veloce */
+  onMount(() => {
+    const t = setInterval(() => {
+      const rate = $settings.fast ? 2 : 1;
+      for (const a of document.getAnimations()) if (a.playbackRate !== rate) a.playbackRate = rate;
+    }, 120);
+    return () => clearInterval(t);
+  });
+
+  /* introduzione: tre suggerimenti la prima volta che arrivi a una scelta */
+  const COACH = [
+    { target: 'hand', title: 'La tua mano', text: 'A ogni turno peschi 5 dadi e ne giochi 3. Il gioco ha già scelto i migliori per far danno. Tocca un dado per metterlo in panchina o giocarlo: per una Parata o una Bava può convenire cambiare.' },
+    { target: 'track', title: 'Cosa farà il nemico', text: 'In alto vedi cosa farà questo turno e nei prossimi. Se prepara uno scudo, non serve parare: colpisci. Se prepara un attacco, la Parata ti protegge. Il veleno passa oltre lo scudo.' },
+    { target: 'dock', title: 'Scegli un\'azione', text: 'Il numero sulla carta dice quanto danno, scudo o veleno farai con la mano scelta. Premi una carta o i tasti 1-4. Buona caccia!' }
+  ];
+  let coach = 0;
+  $: showCoach = !$settings.tutorialDone && $uiPhase === 'battle' && !$menuOpen && !$runSummary && logText === null && !howTo && canAct;
+  function nextCoach(): void {
+    if (coach < COACH.length - 1) { coach++; return; }
+    coach = 0;
+    settings.update(v => ({ ...v, tutorialDone: true }));
+  }
+  function skipCoach(): void { coach = 0; settings.update(v => ({ ...v, tutorialDone: true })); }
+  function replayCoach(): void { howTo = false; coach = 0; settings.update(v => ({ ...v, tutorialDone: false })); }
+
   $: canAct = $battleState === BattleState.WAIT_PLAYER_ACTION && !$diceBusy && !$battleResult;
   /* La mano raggruppata: ogni carta con i lanci extra che ha generato */
   $: handGroups = $rolledChips
@@ -188,7 +213,7 @@
 
 <svelte:window on:keydown={onKey} />
 
-<main class="game">
+<main class="game" data-coach={showCoach ? COACH[coach]?.target : ""}>
   <!-- ===== Barra alta: progresso della run, relitti, oro ===== -->
   <header class="topbar">
     <div class="run">
@@ -220,6 +245,10 @@
 
     <div class="topright">
       <span class="gold" title="Oro"><Icon e="💰" /> {$goldView}</span>
+      <button class="restart icon-btn" title={$settings.muted ? 'Attiva i suoni' : 'Silenzia'} aria-label="Suoni"
+        on:click={() => settings.update(v => ({ ...v, muted: !v.muted }))}><Icon e={$settings.muted ? '🔇' : '🔊'} mono /></button>
+      <button class="restart icon-btn" class:on={$settings.fast} title="Modalità veloce: animazioni più rapide" aria-label="Modalità veloce"
+        on:click={() => settings.update(v => ({ ...v, fast: !v.fast }))}><Icon e="⏩" mono /></button>
       <button class="restart" on:click={() => menuOpen.set(true)}><Icon e="☰" /> Menù</button>
       <button class="restart" class:armed={restartArmed} on:click={onRestart}>
         <Rich text={restartArmed ? 'Sicuro? Perdi la run' : '↻ Nuova run'} />
@@ -271,7 +300,7 @@
       {#if $chainView && $battleState === BattleState.WAIT_PLAYER_ACTION}
         <div class="formula" class:hot={$chainView.tier >= 2}>
           {#if $chainView.multCount > 0}<span class="f-mult">×{$chainView.mult}</span>{/if}
-          <span class="f-pow"><small>Potenza</small> <b class="num">{$chainView.power}</b></span>
+          <span class="f-pow"><small>Potenza</small> {#key $chainView.power}<b class="num pop">{$chainView.power}</b>{/key}</span>
         </div>
       {/if}
       <div class="hand-slots" title="Tocca i dadi per scegliere quali giocare">
@@ -296,6 +325,18 @@
       {/each}
     </div>
   </footer>
+
+  {#if showCoach}
+    <div class="coach" role="dialog" aria-label="Introduzione">
+      <div class="coach-step">{coach + 1} / {COACH.length}</div>
+      <h3>{COACH[coach]?.title}</h3>
+      <p>{COACH[coach]?.text}</p>
+      <div class="coach-actions">
+        <button class="ghost" on:click={skipCoach}>Salta</button>
+        <button class="skill" on:click={nextCoach}>{coach < COACH.length - 1 ? 'Avanti' : 'Ho capito'}</button>
+      </div>
+    </div>
+  {/if}
 
   <!-- ===== Overlay Shop (tra un incontro e l'altro) ===== -->
   {#if $uiPhase === 'shop'}
@@ -529,6 +570,7 @@
           <li>3 Atti da 10 incontri. Se cadi la run finisce, ma i dadi sbloccati restano.</li>
         </ul>
         <p class="credits">Icone: <a href="https://game-icons.net" target="_blank" rel="noopener">game-icons.net</a> (Lorc, Delapouite e altri autori), licenza CC BY 3.0.</p>
+        <button class="ghost" on:click={replayCoach}>Rivedi l'introduzione</button>
         <button class="skill" on:click={() => (howTo = false)}>Ho capito</button>
       </div>
     </div>
@@ -653,6 +695,8 @@
   .f-mult { color: var(--pink); font-weight: 700; font-size: 26px; text-shadow: 0 0 10px rgba(255,92,138,0.6); }
   .formula.hot .f-mult { font-size: 34px; color: #ffb84c; text-shadow: 0 0 14px rgba(255,150,0,0.85); }
   .f-pow small { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 2px; }
+  .f-pow b.pop { display: inline-block; animation: popnum 0.35s cubic-bezier(.2,1.6,.4,1); }
+  @keyframes popnum { 0% { transform: scale(1.55); color: #fff; text-shadow: 0 0 16px #ffb84c; } 100% { transform: scale(1); } }
   .f-pow b { color: var(--gold); font-size: 28px; font-weight: 700; }
   .side { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; justify-content: flex-end; }
   .hand-slots { color: #ffe2a8; font-weight: 700; display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
@@ -738,6 +782,21 @@
   @media (max-width: 760px) { .overlay-box { padding: 18px 14px; width: calc(100% - 24px); box-sizing: border-box; } .shop-box, .forge-box { min-width: 0; } }
 
   /* ---- Meta: shop ---- */
+  .icon-btn { padding: 5px 9px; display: inline-flex; align-items: center; }
+  .icon-btn.on { border-color: #ffb84c; color: #ffb84c; box-shadow: 0 0 8px rgba(255,184,76,0.5); }
+  .coach {
+    position: fixed; left: 50%; bottom: 210px; transform: translateX(-50%); z-index: 40; width: min(460px, 92vw);
+    background: #1b1530; border: 2px solid #ffb84c; border-radius: 12px; padding: 12px 16px; box-shadow: 0 8px 40px rgba(0,0,0,0.7), 0 0 24px rgba(255,184,76,0.35);
+    animation: chip-in 0.4s cubic-bezier(.2,1.4,.4,1) both;
+  }
+  .coach h3 { margin: 2px 0 6px; color: #ffd84c; font-size: 18px; }
+  .coach p { margin: 0 0 10px; font-size: 14px; line-height: 1.35; color: #ece7ff; }
+  .coach-step { font-size: 11px; letter-spacing: 2px; color: #8f86b8; text-align: right; }
+  .coach-actions { display: flex; gap: 10px; justify-content: flex-end; }
+  :global(main.game[data-coach="hand"] .scorebar),
+  :global(main.game[data-coach="track"] .track),
+  :global(main.game[data-coach="dock"] .dock) { outline: 3px solid #ffb84c; outline-offset: 4px; border-radius: 12px; animation: coachglow 1.2s ease-in-out infinite; }
+  @keyframes coachglow { 50% { outline-color: #fff1c4; box-shadow: 0 0 22px rgba(255,184,76,0.7); } }
   .credits { font-size: 12px; color: var(--muted); margin: 8px 0; }
   .credits a { color: var(--cyan); }
   .unlock { color: #7dff9b; font-weight: bold; }
