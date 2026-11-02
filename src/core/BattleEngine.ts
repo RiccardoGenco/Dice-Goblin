@@ -294,10 +294,10 @@ export class BattleEngine {
   }
 
   /** Il contesto che gli oggetti leggono per le loro condizioni */
-  public itemCtx(): ItemCtx {
+  public itemCtx(skill?: SkillId | null): ItemCtx {
     const r = this.lastRoll;
     return buildCtx({
-      skill: this.ctxSkill,
+      skill: skill !== undefined ? skill : this.ctxSkill,
       faces: r?.faces ?? [],
       extraDice: r ? Math.max(0, r.faces.length - r.baseCount) : 0,
       reactions: this.getEffects().reactions.length,

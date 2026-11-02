@@ -6,7 +6,10 @@ import { formatBigNumber } from '@core/format';
 import { summarizeChain, multTier, magnitudeOf } from '@core/chain';
 import { SKILLS } from '@core/skills';
 import { EFFECT_META, REACTIONS, ReactionId } from '@core/effects';
-import { EquipmentManager, findItem, EquipmentItem } from '@core/equipment';
+import { EquipmentManager, findItem, EquipmentItem, describeActiveItems } from '@core/equipment';
+import {
+  RunLog, faceLabel, saveCurrentLog, loadCurrentLog, saveLastLog, loadLastLog
+} from '@core/RunLog';
 import {
   BALANCE,
   BattleState,
@@ -59,7 +62,11 @@ import {
   chainView,
   skillPreview,
   rollNonce,
-  runProgress
+  runProgress,
+  menuOpen,
+  menuInfo,
+  runSummary,
+  RunSummaryView
 } from './ui/stores';
 import { ACT_BOSSES, CLASS_SPRITES } from './ui/spriteCatalog';
 
@@ -104,6 +111,11 @@ export class GameManager {
   };
 
   private bag: GoblinDie[] = [];
+  /** Registro della run: ogni scelta e conseguenza, esportabile */
+  private log!: RunLog;
+  private turnNo = 0;
+  private prevPlayerHp = new Decimal(0);
+  private started = false;
   private lastFaces: DieFace[] = [];
   /** Dado logico di ciascuna faccia di lastFaces (inclusi i lanci ricorsivi extra) */
   private lastSources: GoblinDie[] = [];
@@ -142,10 +154,122 @@ export class GameManager {
         if (item) this.equipment.equip(item);
       }
       pushLog('💾 Run ripristinata dal salvataggio');
+      this.log = loadCurrentLog() ?? this.freshLog();
     } else {
       this.buildBag();
+      this.log = this.freshLog();
     }
     this.newBattle(this.run.level);
+    this.publishMenuInfo();
+  }
+
+  /* ---------------- Registro della run ---------------- */
+
+  private tuningSnapshot(): Record<string, number | string> {
+    return {
+      hpGrowth: BALANCE.ENEMY_HP_GROWTH, strGrowth: BALANCE.ENEMY_STR_GROWTH,
+      enemyStr: BALANCE.ENEMY_BASE_STR, enemyVit: BALANCE.ENEMY_BASE_VIT,
+      champion: CHAMPION_STAT_MULTIPLIER, boss: BOSS_STAT_MULTIPLIER,
+      gold: BALANCE.GOLD_REWARD_BASE, goldGrowth: BALANCE.GOLD_REWARD_GROWTH,
+      costGrowth: BALANCE.SHOP_COST_GROWTH, heal: BALANCE.HEAL_PER_WIN,
+      rerolls: BALANCE.REROLLS_PER_TURN
+    };
+  }
+
+  private freshLog(): RunLog {
+    const log = new RunLog(this.tuningSnapshot());
+    const s = this.playerStats;
+    log.add('run', `Partenza: STR ${formatBigNumber(s.str)}, INT ${formatBigNumber(s.int)}, VIT ${formatBigNumber(s.vit)}, LCK ${s.lck}`);
+    log.add('run', `Sacchetto: ${this.bag.map((d, i) => `#${i + 1} ${d.faces.map(faceLabel).join(' ')}`).join(' | ')}`);
+    return log;
+  }
+
+  private hpText(c: Combatant): string {
+    const sh = c.shield.gt(0) ? ` +${formatBigNumber(c.shield)} scudo` : '';
+    const po = c.poison.turnsLeft > 0 ? ` ☠${formatBigNumber(c.poison.perTurn)}×${c.poison.turnsLeft}` : '';
+    return `${formatBigNumber(Decimal.max(c.hp, 0))}/${formatBigNumber(c.maxHp)}${sh}${po}`;
+  }
+
+  private state(): string {
+    return `goblin ${this.hpText(this.engine.player)} · ${this.enemyName} ${this.hpText(this.engine.enemy)}`;
+  }
+
+  private persistLog(): void { saveCurrentLog(this.log); }
+
+  /** Conta i danni subiti dal goblin rispetto all'ultima rilevazione */
+  private trackPlayerHp(): void {
+    const cur = this.engine.player.hp;
+    const lost = this.prevPlayerHp.minus(Decimal.max(cur, 0));
+    if (lost.gt(0)) this.log.stats.damageTaken = this.log.stats.damageTaken.plus(lost);
+    this.prevPlayerHp = Decimal.max(cur, 0);
+  }
+
+  /** Chiude il registro e prepara la schermata finale */
+  private endRun(outcome: 'sconfitta' | 'vittoria' | 'abbandonata', killedBy?: string): void {
+    if (this.log.finished) return;
+    this.log.add('run', `FINE RUN: ${outcome} (${this.run.label})${killedBy ? ` — ucciso da ${killedBy}` : ''}`);
+    this.log.finish(outcome, this.run.label, killedBy);
+    saveLastLog(this.log);
+    if (outcome !== 'abbandonata') runSummary.set(this.buildSummary(outcome, killedBy ?? null));
+    this.publishMenuInfo();
+  }
+
+  private buildSummary(outcome: 'sconfitta' | 'vittoria', killedBy: string | null): RunSummaryView {
+    const st = this.log.stats;
+    const totalActions = Object.values(st.actions).reduce((a, b) => a + b, 0) || 1;
+    const bagFaces = this.bag.flatMap(d => d.faces);
+    const mults = bagFaces.filter(f => f.type === FaceType.MULTIPLIER).length;
+    const enchanted = bagFaces.filter(f => f.effect).length;
+    return {
+      outcome,
+      title: outcome === 'vittoria' ? '👑 Run completata!' : '💀 Il Goblin è caduto',
+      endLabel: this.run.label,
+      killedBy,
+      rows: [
+        ['Incontri vinti', String(Math.max(0, st.fights - (outcome === 'sconfitta' ? 1 : 0)))],
+        ['Turni giocati', String(st.turns)],
+        ['Danno inflitto', formatBigNumber(st.damageDealt)],
+        ['Colpo più forte', formatBigNumber(st.maxHit)],
+        ['Danno subito', formatBigNumber(st.damageTaken)],
+        ['Rilanci usati', String(st.rerollsUsed)],
+        ['Reazioni scatenate', String(st.reactions)],
+        ['Oro guadagnato / speso', `${formatBigNumber(st.goldEarned)} / ${formatBigNumber(st.goldSpent)}`],
+        ['Forza / Vitalità', `${formatBigNumber(this.playerStats.str)} / ${formatBigNumber(this.playerStats.vit)}`]
+      ],
+      actions: Object.entries(st.actions).map(([name, n]) => ({ name, pct: Math.round((n / totalActions) * 100) })),
+      items: this.equipment.slots.filter((x): x is EquipmentItem => x !== null).map(i => ({ icon: i.icon, name: i.name })),
+      build: `${this.bag.length} dadi · ${mults} facce ×moltiplicatore · ${enchanted} facce incantate`
+    };
+  }
+
+  private publishMenuInfo(): void {
+    menuInfo.set({
+      hasSave: this.saveMgr.hasRun() && !this.log.finished,
+      inProgress: this.started && !this.log.finished,
+      saveLabel: this.run.label,
+      gold: formatBigNumber(this.run.state.gold),
+      hasLastLog: loadLastLog() !== null || this.log.finished
+    });
+  }
+
+  /** Testo del registro: quello della run in corso, o dell'ultima conclusa */
+  public getLogText(which: 'current' | 'last'): string {
+    if (which === 'current') return this.log.toText();
+    return (loadLastLog() ?? this.log).toText();
+  }
+
+  /* ---------------- Menù ---------------- */
+
+  /** Da menù: riprende la run (o avvia quella appena caricata) */
+  public resumeFromMenu(): void {
+    menuOpen.set(false);
+    if (!this.started) void this.start();
+  }
+
+  /** Da menù: nuova run (se non è ancora partito nulla e non c'è un salvataggio, parte subito) */
+  public newRunFromMenu(): void {
+    menuOpen.set(false);
+    void this.newRun();
   }
 
   /* ---------------- Setup battaglia ---------------- */
@@ -300,7 +424,26 @@ export class GameManager {
   }
 
   public start(): Promise<void> {
+    this.started = true;
+    this.logFightHeader();
+    this.publishMenuInfo();
     return this.engine.initTurn();
+  }
+
+  /** Riga di apertura dell'incontro nel registro */
+  private logFightHeader(): void {
+    const e = this.engine;
+    this.turnNo = 0;
+    this.prevPlayerHp = Decimal.max(e.player.hp, 0);
+    const header = `━━ ${this.run.label} (lv ${this.run.level}) · ${this.enemyName} · HP ${formatBigNumber(e.enemy.maxHp)}, STR ${formatBigNumber(e.enemy.stats.str)} ━━`;
+    // dopo un ricaricamento lo stesso incontro riparte da capo: si annota ma non si conta due volte
+    const last = [...this.log.entries].reverse().find(x => x.kind === 'fight');
+    const resumed = !!last && last.text.replace('↻ Ripresa ', '') === header;
+    if (!resumed) this.log.stats.fights++;
+    const items = this.equipment.slots.filter((x): x is EquipmentItem => x !== null).map(i => i.name);
+    this.log.add('fight', resumed ? `↻ Ripresa ${header}` : header);
+    this.log.add('note', `Goblin: HP ${this.hpText(e.player)}, STR ${formatBigNumber(e.player.stats.str)}, VIT ${formatBigNumber(this.playerStats.vit)} · oggetti: ${items.join(', ') || 'nessuno'} · oro ${formatBigNumber(this.run.state.gold)}`);
+    this.persistLog();
   }
 
   /* ---------------- Eventi engine -> store ---------------- */
@@ -317,6 +460,11 @@ export class GameManager {
     e.on('onEnemyIntent', p => {
       const intent = p.intent as EnemyIntent;
       const meta = INTENT_META[intent.type];
+      this.trackPlayerHp();
+      this.turnNo++;
+      this.log.stats.turns++;
+      this.log.add('turn', `Turno ${this.turnNo} — ${this.state()}`);
+      this.log.add('enemy', `Intento: ${meta.icon} ${meta.label} ${formatBigNumber(intent.value)}`);
       intentView.set({
         icon: meta.icon,
         label: meta.label,
@@ -329,6 +477,7 @@ export class GameManager {
       const sources = p.sources as GoblinDie[];
       this.lastFaces = faces;
       this.lastSources = sources;
+      this.logRoll(faces);
       overflowActive.set(false);
       this.overflowMult = new Decimal(1);
       rolledChips.set(faces.map(f => this.toChip(f)));
@@ -352,36 +501,46 @@ export class GameManager {
     });
 
     e.on('onDamageDealt', p => {
+      const amt = p.amount as Decimal;
+      this.log.stats.damageDealt = this.log.stats.damageDealt.plus(amt);
+      if (amt.gt(this.log.stats.maxHit)) this.log.stats.maxHit = amt;
+      this.log.add('effect', `Danno inflitto ${formatBigNumber(amt)} → ${this.enemyName} ${this.hpText(this.engine.enemy)}`);
       emitFx('enemy', 'hit', formatBigNumber(p.amount as Decimal), magnitudeOf(p.amount as Decimal));
       pushLog(`💥 ${formatBigNumber(p.amount as Decimal)} danni a ${this.enemyName}`);
       this.refreshCombatants();
     });
 
     e.on('onShieldGained', p => {
+      this.log.add('effect', `Scudo +${formatBigNumber(p.amount as Decimal)} (totale ${formatBigNumber(this.engine.player.shield)})`);
       emitFx('player', 'shield', `+${formatBigNumber(p.amount as Decimal)}`, magnitudeOf(p.amount as Decimal));
       pushLog(`🛡️ Scudo: ${formatBigNumber(p.amount as Decimal)} punti`);
       this.refreshCombatants();
     });
 
     e.on('onReflect', p => {
+      this.log.add('effect', `Parata: rimbalzo ${formatBigNumber(p.amount as Decimal)} sul nemico`);
       emitFx('enemy', 'hit', `↩ ${formatBigNumber(p.amount as Decimal)}`, magnitudeOf(p.amount as Decimal));
       pushLog(`↩️ Parata: ${formatBigNumber(p.amount as Decimal)} danni rimbalzati`);
       this.refreshCombatants();
     });
 
     e.on('onCharge', p => {
+      this.log.add('effect', `Carica: ${p.count as number} facce restano per il turno dopo (×1.5 al prossimo lancio)`);
       emitFx('player', 'shield', `⚡ ${p.count as number} facce`, 2);
       pushLog(`⚡ Carica: ${p.count as number} facce restano per il prossimo turno`);
     });
 
     e.on('onReaction', p => {
       const r = REACTIONS[p.id as ReactionId];
+      this.log.stats.reactions++;
+      this.log.add('effect', `Reazione ${r.icon} ${r.name}: ${r.text} (${formatBigNumber(p.amount as Decimal)})`);
       emitFx('center', 'mult', `${r.icon} ${r.name}`, 3);
       pushLog(`⚗️ ${r.name}: ${r.text}`);
       this.refreshCombatants();
     });
 
     e.on('onPoisonApplied', p => {
+      this.log.add('effect', `Veleno applicato: ${formatBigNumber(p.perTurn as Decimal)}/turno per ${p.turns as number} turni`);
       emitFx('enemy', 'poison', `☠ ${formatBigNumber(p.perTurn as Decimal)}`);
       pushLog(`☠️ Veleno: ${formatBigNumber(p.perTurn as Decimal)}/turno × ${p.turns as number}`);
     });
@@ -389,12 +548,18 @@ export class GameManager {
     e.on('onEnemyAction', p => {
       const intent = p.intent as EnemyIntent;
       const meta = INTENT_META[intent.type];
+      this.trackPlayerHp();
+      this.log.add('enemy', `${this.enemyName} esegue ${meta.label} ${formatBigNumber(intent.value)} → ${this.state()}`);
       if (intent.type === IntentType.ATTACK) emitFx('player', 'hit', formatBigNumber(intent.value), magnitudeOf(intent.value));
       pushLog(`${meta.icon} ${this.enemyName} usa ${meta.label} (${formatBigNumber(intent.value)})`);
       this.refreshCombatants();
     });
 
     e.on('onBattleEnded', p => {
+      this.trackPlayerHp();
+      this.log.add('result', p.winner === 'player'
+        ? `VITTORIA in ${this.turnNo} turni — ${this.state()}`
+        : `SCONFITTA al turno ${this.turnNo} — ${this.state()}`);
       battleResult.set(p.winner === 'player' ? 'victory' : 'defeat');
       this.refreshCombatants();
       if (p.winner === 'player') {
@@ -402,6 +567,7 @@ export class GameManager {
       } else {
         // Roguelike: la sconfitta chiude la run (gli sblocchi meta restano)
         this.saveMgr.clearRun();
+        this.endRun('sconfitta', this.enemyName);
       }
     });
   }
@@ -412,6 +578,8 @@ export class GameManager {
     const reward = this.run.goldReward();
     this.run.addGold(reward);
     pushLog(`💰 Bottino: ${formatBigNumber(reward)} oro`);
+    this.log.stats.goldEarned = this.log.stats.goldEarned.plus(reward);
+    this.log.add('result', `Bottino ${formatBigNumber(reward)} oro (totale ${formatBigNumber(this.run.state.gold)})`);
 
     // Le boss fight aprono gli intermezzi SPECIALI (specs §7.bis/§10):
     // Campione -> bivio dorato; Boss d'Atto -> Mercante Reale + Gran Forgia
@@ -419,6 +587,7 @@ export class GameManager {
     const ratio = this.engine.player.hp.div(Decimal.max(this.engine.player.maxHp, 1)).toNumber();
     this.run.state.hpRatio = wasBossFight ? 1 : Math.min(1, Math.max(0.05, ratio) + BALANCE.HEAL_PER_WIN);
     pushLog(wasBossFight ? '🩹 Riposo: HP al massimo' : `🩹 Recuperi ${Math.round(BALANCE.HEAL_PER_WIN * 100)}% degli HP`);
+    this.log.add('result', wasBossFight ? 'Riposo: HP al massimo' : `Recupero ${Math.round(BALANCE.HEAL_PER_WIN * 100)}% HP → ${Math.round(this.run.state.hpRatio * 100)}%`);
     const wasChampion = this.run.isChampion;
     const wasActBoss = this.run.isActBoss;
     const beatenAct = this.run.state.act;
@@ -440,12 +609,14 @@ export class GameManager {
     }
 
     if (result === 'run-completed') {
+      this.endRun('vittoria');
       this.saveMgr.clearRun(); // la run è finita: si riparte da zero
       uiPhase.set('run-complete');
       return;
     }
 
     this.autosave();
+    this.persistLog();
 
     if (wasActBoss) {
       // ACT_TRANSITION (specs §10): ENTRAMBI gli intermezzi speciali
@@ -470,6 +641,7 @@ export class GameManager {
 
   /** Scelta della porta: la porta non scelta si chiude. */
   public chooseDoor(door: 'shop' | 'forge'): void {
+    this.log.add('note', `Bivio${this.intermissionSpecial ? ' dorato' : ''}: sceglie ${door === 'shop' ? 'il Mercante' : 'la Forgia'}`);
     if (door === 'shop') this.openShop(this.intermissionSpecial);
     else this.openForge(this.intermissionSpecial);
   }
@@ -504,14 +676,57 @@ export class GameManager {
 
   public async useSkill(id: SkillId): Promise<void> {
     if (this.engine.state !== BattleState.WAIT_PLAYER_ACTION) return;
+    this.logAction(id);
     await this.engine.resolvePlayerAction(id);
+    this.persistLog();
+  }
+
+  /** Lancio nel registro: facce, effetti e reazioni */
+  private logRoll(faces: DieFace[]): void {
+    const e = this.engine;
+    const ef = e.getEffects();
+    const fx = [
+      ef.poison.gt(0) ? `☠${formatBigNumber(ef.poison)}` : '',
+      ef.shield.gt(0) ? `🛡${formatBigNumber(ef.shield)}` : '',
+      ef.fire.gt(0) ? `🔥${formatBigNumber(ef.fire)}` : ''
+    ].filter(Boolean).join(' ');
+    const extra = e.overflow.active ? ` · OVERFLOW ×${formatBigNumber(e.overflow.mult)}` : '';
+    const charged = e.charged ? ' · lancio di Carica (×1.5)' : '';
+    this.log.add('roll', `Lancio (${faces.length} facce): ${faces.map(faceLabel).join(' ')}${extra}${charged}`);
+    if (fx || ef.reactions.length) {
+      this.log.add('roll', `Effetti pronti: ${fx || '—'}${ef.reactions.length ? ` · reazioni: ${ef.reactions.map(r => r.name).join(', ')}` : ''}`);
+    }
+  }
+
+  /** Scelta dell'azione nel registro, con il calcolo del danno */
+  private logAction(id: SkillId): void {
+    const e = this.engine;
+    const skill = SKILLS[id];
+    const faces = this.lastFaces;
+    const flat = faces.filter(f => f.type === FaceType.NORMAL).reduce((a, f) => a.plus(f.value), new Decimal(0));
+    const mult = summarizeChain(faces).multProduct;
+    const dmg = e.calcDamage(skill.skillMod, id);
+    const active = describeActiveItems(this.equipment.slots, e.itemCtx(id));
+    const ov = e.overflow.active ? ` · overflow ×${formatBigNumber(e.overflow.mult)}` : '';
+    const ch = e.charged ? ' · Carica ×1.5' : '';
+    const what =
+      skill.carriesRoll ? `tieni ${faces.length} facce`
+      : skill.convertsToShield ? `scudo ${formatBigNumber(dmg)}`
+      : skill.poisonRatio ? `veleno ${formatBigNumber(dmg.times(skill.poisonRatio).times(Decimal.max(e.player.stats.int, 1)))}/turno`
+      : `danno ${formatBigNumber(dmg)}`;
+    this.log.stats.actions[skill.name] = (this.log.stats.actions[skill.name] ?? 0) + 1;
+    this.log.add('action', `AZIONE ${skill.name} (×${skill.skillMod.toString()}) → ${what}`);
+    this.log.add('action', `Calcolo: (STR ${formatBigNumber(e.player.stats.str)} + facce ${formatBigNumber(flat)}) × moltiplicatori ×${formatBigNumber(mult)}${ov}${ch} · oggetti: ${active.join('; ') || 'nessuno attivo'} · rilanci rimasti ${e.rerolls}`);
   }
 
   /** Rilancio gratuito: rilancia i dadi scelti e lascia fermi gli altri */
   public async rerollDice(indices: number[]): Promise<void> {
     if (this.engine.state !== BattleState.WAIT_PLAYER_ACTION) return;
     const before = this.lastFaces.length;
+    const old = [...new Set(indices)].filter(i => i >= 0 && i < before).sort((a, b) => a - b).map(i => ({ i, f: faceLabel(this.lastFaces[i]!) }));
     if (!this.engine.rerollSelected(indices)) return;
+    this.log.stats.rerollsUsed++;
+    this.log.add('reroll', `Rilancio: ${old.map(o => `#${o.i + 1} ${o.f} → ${faceLabel(this.lastFaces[o.i]!)}`).join(', ')} (restano ${this.engine.rerolls}) · ora ${this.lastFaces.length} facce`);
     const chosen = new Set(indices);
     const keep = new Set<number>();
     for (let i = 0; i < before; i++) if (!chosen.has(i)) keep.add(i);
@@ -553,6 +768,8 @@ export class GameManager {
     this.run.addGold(value);
     this.syncEquipment();
     pushLog(`💰 Venduto: ${item.name} (+${formatBigNumber(value)})`);
+    this.log.stats.goldEarned = this.log.stats.goldEarned.plus(value);
+    this.log.add('shop', `Venduto: ${item.name} per ${formatBigNumber(value)} — oro ${formatBigNumber(this.run.state.gold)}`);
     equipVersion.update(v => v + 1);
     this.publishOffers();
     this.refreshRunHeader();
@@ -572,6 +789,7 @@ export class GameManager {
       this.equipment.ownedIds
     );
     shopSpecial.set(special);
+    this.log.add('shop', `${special ? 'Mercante Reale' : 'Mercante'} — oro ${formatBigNumber(this.run.state.gold)} — offerte: ${this.currentOffers.map(o => `${o.label} (${formatBigNumber(o.cost)})`).join('; ')}`);
     this.publishOffers();
     this.refreshRunHeader();
     uiPhase.set('shop');
@@ -619,6 +837,10 @@ export class GameManager {
       equipVersion.update(v => v + 1);
     }
     pushLog(`${offer.icon} Acquistato: ${offer.label}`);
+    this.log.stats.goldSpent = this.log.stats.goldSpent.plus(offer.cost);
+    if (offer.kind === 'item') this.log.stats.itemsBought++;
+    this.log.add('shop', `Acquisto: ${offer.label} per ${formatBigNumber(offer.cost)} — oro rimasto ${formatBigNumber(this.run.state.gold)}`);
+    this.persistLog();
     this.currentOffers = this.currentOffers.filter(o => o.id !== offerId);
     this.publishOffers();
     this.refreshRunHeader();
@@ -651,6 +873,7 @@ export class GameManager {
   private openForge(special: boolean): void {
     this.intermissionSpecial = special;
     this.opsLeft = this.forge.opsPerVisit(special);
+    this.log.add('forge', `${special ? 'Gran Forgia' : 'Forgia'} — ${this.opsLeft} operazioni — oro ${formatBigNumber(this.run.state.gold)}`);
     forgeSpecial.set(special);
     forgeOpsLeft.set(this.opsLeft);
     forgeVersion.update(v => v + 1);
@@ -725,6 +948,10 @@ export class GameManager {
     this.refreshRunHeader();
     this.autosave();
     pushLog(`🔨 Forgia: ${q.preview ?? 'operazione completata'}`);
+    this.log.stats.forgeOps++;
+    this.log.stats.goldSpent = this.log.stats.goldSpent.plus(q.cost);
+    this.log.add('forge', `${q.preview ?? 'operazione'} per ${formatBigNumber(q.cost)} — oro rimasto ${formatBigNumber(this.run.state.gold)}`);
+    this.persistLog();
   }
 
   /** Chiude la forgia e avvia l'incontro successivo */
@@ -748,6 +975,9 @@ export class GameManager {
   /** Nuova run da zero: reset di stat, borsa, oro e slot.
    *  Gli sblocchi META restano: il pool dadi è più ricco. */
   public newRun(): Promise<void> {
+    // la run lasciata a metà si chiude nel registro come abbandonata
+    if (!this.log.finished && this.log.stats.turns > 0) this.endRun('abbandonata');
+    runSummary.set(null);
     this.saveMgr.clearRun();
     this.run = new RunManager(freshRunState());
     this.playerStats.str = new Decimal(10);
@@ -757,7 +987,9 @@ export class GameManager {
     for (let i = 0; i < this.equipment.slots.length; i++) this.equipment.unequip(i);
     equipVersion.update(v => v + 1);
     this.buildBag();
+    this.log = this.freshLog();
     this.newBattle(0);
+    this.publishMenuInfo();
     return this.start();
   }
 

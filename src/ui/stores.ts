@@ -152,3 +152,20 @@ export const chainView = writable<ChainView | null>(null);
 export const skillPreview = writable<Record<number, string>>({});
 /** Si incrementa a ogni nuovo lancio: ri-innesca le animazioni dei chip */
 export const rollNonce = writable(0);
+
+/* ---- Menù iniziale e schermata finale ---- */
+export const menuOpen = writable(true);
+export interface MenuInfo { hasSave: boolean; inProgress: boolean; saveLabel: string; gold: string; hasLastLog: boolean }
+export const menuInfo = writable<MenuInfo>({ hasSave: false, inProgress: false, saveLabel: '', gold: '0', hasLastLog: false });
+
+export interface RunSummaryView {
+  outcome: 'sconfitta' | 'vittoria' | 'abbandonata';
+  title: string;
+  endLabel: string;
+  killedBy: string | null;
+  rows: [string, string][];
+  actions: { name: string; pct: number }[];
+  items: { icon: string; name: string }[];
+  build: string;
+}
+export const runSummary = writable<RunSummaryView | null>(null);

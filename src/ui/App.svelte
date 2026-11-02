@@ -9,6 +9,7 @@
   import {
     playerView, enemyView, intentView, battleState, rolledChips,
     overflowActive, rerollsLeft, diceBusy, effectsView, battleResult, logLines, equipVersion,
+    menuOpen, menuInfo, runSummary,
     uiPhase, goldView, runLabel, shopOffers, shopSpecial, rewardBanner,
     crossroadSpecial, forgeSpecial, forgeOpsLeft, forgeVersion,
     chainView, skillPreview, rollNonce, runProgress
@@ -81,9 +82,50 @@
     // Il canvas copre il palco, che cambia misura con la finestra: osserva il canvas stesso
     const ro = new ResizeObserver(() => gm?.resize(canvas.clientWidth, canvas.clientHeight));
     ro.observe(canvas);
-    void gm.start();
     return () => ro.disconnect();
   });
+
+  /* ---- Menù, registro e fine run ---- */
+  let logText: string | null = null;
+  let howTo = false;
+  let copied = false;
+  let newArmed = false;
+  let newTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function openLog(which: 'current' | 'last'): void { logText = gm?.getLogText(which) ?? ''; }
+  async function copyLog(text: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // fallback: selezione nel textarea
+      const ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); } catch { /* niente */ }
+      ta.remove();
+    }
+    copied = true;
+    setTimeout(() => { copied = false; }, 1800);
+  }
+  function downloadLog(text: string): void {
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `goblin-revenge-registro-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.txt`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }
+  function startNew(): void {
+    // con una run in corso serve un secondo clic
+    if (($menuInfo.hasSave || $menuInfo.inProgress) && !newArmed) {
+      newArmed = true;
+      newTimer = setTimeout(() => { newArmed = false; }, 3000);
+      return;
+    }
+    clearTimeout(newTimer); newArmed = false;
+    gm?.newRunFromMenu();
+  }
+  function endNew(): void { gm?.newRunFromMenu(); }
+  function endMenu(): void { runSummary.set(null); menuOpen.set(true); }
 
   /* ---- Nuova run: serve un secondo clic entro 3 secondi ---- */
   let restartArmed = false;
@@ -101,7 +143,7 @@
 
   /* ---- Tastiera: 1-4 skill, R rilancia i dadi selezionati, Esc deseleziona ---- */
   function onKey(e: KeyboardEvent): void {
-    if ($uiPhase !== 'battle' || e.ctrlKey || e.metaKey || e.altKey) return;
+    if ($menuOpen || logText !== null || $uiPhase !== 'battle' || e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === 'r' || e.key === 'R') { e.preventDefault(); doReroll(); return; }
     if (e.key === 'Escape') { selectedChips = []; return; }
     const idx = Number(e.key) - 1;
@@ -175,6 +217,7 @@
 
     <div class="topright">
       <span class="gold" title="Oro">💰 {$goldView}</span>
+      <button class="restart" on:click={() => menuOpen.set(true)}>☰ Menù</button>
       <button class="restart" class:armed={restartArmed} on:click={onRestart}>
         {restartArmed ? 'Sicuro? Perdi la run' : '↻ Nuova run'}
       </button>
@@ -386,22 +429,97 @@
     </div>
   {/if}
 
-  <!-- ===== Overlay fine run / sconfitta ===== -->
-  {#if $uiPhase === 'run-complete'}
+  <!-- ===== Schermata di fine run ===== -->
+  {#if $runSummary}
     <div class="overlay">
-      <div class="overlay-box">
-        <h2>👑 RUN COMPLETATA!</h2>
-        <p>Hai sconfitto tutti e 3 i Boss. Il pool dei dadi è più ricco per sempre.</p>
+      <div class="overlay-box summary-box" class:royal={$runSummary.outcome === 'vittoria'}>
+        <h2>{$runSummary.title}</h2>
+        <p class="hint-line">
+          {$runSummary.endLabel}{$runSummary.killedBy ? ` — sconfitto da ${$runSummary.killedBy}` : ''}
+        </p>
         {#if $rewardBanner}<p class="unlock">{$rewardBanner}</p>{/if}
-        <button class="skill" on:click={() => void gm?.newRun()}>🔄 Nuova Run</button>
+        <div class="sum-grid">
+          {#each $runSummary.rows as [label, value]}
+            <span class="sum-l">{label}</span><span class="sum-v">{value}</span>
+          {/each}
+        </div>
+        {#if $runSummary.actions.length}
+          <div class="sum-actions">
+            {#each $runSummary.actions as a}
+              <div class="bar"><span>{a.name}</span><i style={`width:${a.pct}%`}></i><b>{a.pct}%</b></div>
+            {/each}
+          </div>
+        {/if}
+        <p class="hint-line">
+          {#each $runSummary.items as it}<span title={it.name}>{it.icon} </span>{/each}
+          {$runSummary.items.length ? '·' : 'Nessun oggetto ·'} {$runSummary.build}
+        </p>
+        <div class="btn-row">
+          <button class="skill" on:click={endNew}>🔄 Nuova run</button>
+          <button class="ghost" on:click={() => openLog('last')}>📜 Leggi il registro</button>
+          <button class="ghost" on:click={() => gm && copyLog(gm.getLogText('last'))}>{copied ? '✔ Copiato' : '📋 Copia registro'}</button>
+          <button class="ghost" on:click={() => gm && downloadLog(gm.getLogText('last'))}>⬇️ Scarica</button>
+          <button class="ghost" on:click={endMenu}>☰ Menù</button>
+        </div>
       </div>
     </div>
-  {:else if $battleResult === 'defeat'}
-    <div class="overlay">
-      <div class="overlay-box">
-        <h2>💀 Run terminata</h2>
-        <p>Il Goblin è caduto. Gli sblocchi permanenti restano tuoi.</p>
-        <button class="skill" on:click={() => void gm?.newRun()}>🔄 Nuova Run</button>
+  {/if}
+
+  <!-- ===== Menù iniziale ===== -->
+  {#if $menuOpen}
+    <div class="overlay menu">
+      <div class="overlay-box menu-box">
+        <h1 class="logo">GOBLIN<br />REVENGE</h1>
+        <p class="hint-line">Un goblin, una borsa di dadi e una vendetta esponenziale.</p>
+        <div class="menu-btns">
+          {#if $menuInfo.hasSave || $menuInfo.inProgress}
+            <button class="skill" on:click={() => gm?.resumeFromMenu()}>
+              ▶ {$menuInfo.inProgress ? 'Riprendi' : 'Continua'}
+              <small>{$menuInfo.saveLabel} · 💰 {$menuInfo.gold}</small>
+            </button>
+          {/if}
+          <button class={$menuInfo.hasSave || $menuInfo.inProgress ? 'ghost' : 'skill'} on:click={startNew}>
+            {newArmed ? 'Sicuro? Perdi la run attuale' : '⚔️ Nuova run'}
+          </button>
+          <button class="ghost" on:click={() => (howTo = true)}>❓ Come si gioca</button>
+          <button class="ghost" disabled={!$menuInfo.inProgress && !$menuInfo.hasSave} on:click={() => openLog('current')}>📜 Registro della run in corso</button>
+          <button class="ghost" disabled={!$menuInfo.hasLastLog} on:click={() => openLog('last')}>🗂️ Registro dell'ultima run</button>
+        </div>
+        <p class="hint-line">Il registro annota ogni turno: copialo e mandamelo dopo una partita.</p>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ===== Come si gioca ===== -->
+  {#if howTo}
+    <div class="overlay menu" on:click|self={() => (howTo = false)}>
+      <div class="overlay-box howto">
+        <h2>❓ Come si gioca</h2>
+        <ul>
+          <li><b>Ogni turno</b> i dadi della borsa vengono lanciati. Il danno è (Forza + facce normali) × moltiplicatori × azione.</li>
+          <li><b>Rilanci gratuiti:</b> tocca i dadi da rilanciare e premi <kbd>R</kbd>. Gli altri restano fermi.</li>
+          <li><b>Azioni</b> (tasti <kbd>1</kbd>-<kbd>4</kbd>): Sgancio (colpo sicuro), Parata (scudo che rimbalza se il nemico attacca), Bava (veleno forte, ignora lo scudo), Carica (salti il turno, tieni le facce, il lancio dopo vale ×1.5). Leggi sempre l'intento del nemico.</li>
+          <li><b>Facce incantate:</b> ☠ veleno, 🛡 scudo, 🔥 fuoco. Se escono insieme reagiscono: Vapori (☠🔥), Scudo ardente (🛡🔥), Spore (☠🛡).</li>
+          <li><b>Dopo ogni incontro</b> scegli una porta: Mercante (oggetti, forza, vitalità, dadi) o Forgia (migliora le facce). Un incontro su cinque è un Campione o un Boss, con sconti e bottino migliori.</li>
+          <li><b>Gli HP restano:</b> +20% dopo ogni vittoria, pieni dopo Campioni e Boss. 5 oggetti al massimo, rivendibili a metà prezzo.</li>
+          <li>3 Atti da 10 incontri. Se cadi la run finisce, ma i dadi sbloccati restano.</li>
+        </ul>
+        <button class="skill" on:click={() => (howTo = false)}>Ho capito</button>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ===== Lettore del registro ===== -->
+  {#if logText !== null}
+    <div class="overlay menu">
+      <div class="overlay-box logbox">
+        <h2>📜 Registro</h2>
+        <pre class="logtext">{logText}</pre>
+        <div class="btn-row">
+          <button class="skill" on:click={() => logText && copyLog(logText)}>{copied ? '✔ Copiato' : '📋 Copia tutto'}</button>
+          <button class="ghost" on:click={() => logText && downloadLog(logText)}>⬇️ Scarica .txt</button>
+          <button class="ghost" on:click={() => (logText = null)}>Chiudi</button>
+        </div>
       </div>
     </div>
   {/if}
@@ -422,6 +540,7 @@
     padding: 8px 12px 10px;
     display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; gap: 8px;
     font-family: 'Pixelify Sans', ui-monospace, monospace; color: var(--ink);
+    font-variant-ligatures: none; font-feature-settings: 'liga' 0, 'clig' 0;
   }
   .mini {
     font-size: 12px; padding: 3px 10px; cursor: pointer; font-family: inherit;
@@ -565,12 +684,12 @@
   }
   .overlay-box h2 { margin: 0; letter-spacing: 1px; }
   /* pulsanti d'azione dell'overlay (Prossimo incontro, Continua...) in tema col gioco */
-  .overlay-box > button {
+  .overlay-box > button, .overlay-box button.skill {
     font-family: inherit; font-size: 16px; font-weight: 600; padding: 10px 18px; cursor: pointer;
     color: #fff; background: linear-gradient(180deg, #3a1f55, #231238);
     border: 2px solid #ff5c8a; border-radius: 8px; box-shadow: 0 3px 0 #14091f;
   }
-  .overlay-box > button:hover { filter: brightness(1.2); }
+  .overlay-box > button:hover, .overlay-box button.skill:hover { filter: brightness(1.2); }
   .overlay-box > button:focus-visible { outline: 3px solid #5cd0ff; outline-offset: 2px; }
   @media (max-width: 760px) { .overlay-box { padding: 18px 14px; width: calc(100% - 24px); box-sizing: border-box; } .shop-box, .forge-box { min-width: 0; } }
 
@@ -642,4 +761,32 @@
   .service.selected { outline: 2px solid #ffb84c; }
   .service .cost { color: #ffd84c; font-size: 11px; }
   .service .hint { font-size: 10px; opacity: 0.8; }
+  /* ---- Menù, fine run, registro ---- */
+  .overlay.menu { z-index: 60; }
+  .menu-box { text-align: center; max-width: 420px; }
+  .logo { font-size: 44px; line-height: 1; margin: 0 0 6px; color: var(--gold); letter-spacing: 3px; text-shadow: 0 3px 0 #5a2d00, 0 0 24px #ffb84c66; }
+  .menu-btns { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
+  .menu-btns small { display: block; font-size: 11px; opacity: 0.8; font-weight: normal; }
+  button.ghost {
+    font-family: inherit; background: #1b1626; border: 1px solid #4a4160; color: inherit; border-radius: 8px;
+    padding: 9px 12px; font: inherit; font-size: 13px; cursor: pointer;
+  }
+  button.ghost:hover:not(:disabled) { border-color: #ff6fa8; }
+  button.ghost:disabled { opacity: 0.4; cursor: default; }
+  .btn-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 12px; }
+  .summary-box { max-width: 520px; }
+  .sum-grid { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; margin: 10px 0; font-size: 13px; text-align: left; }
+  .sum-l { opacity: 0.75; }
+  .sum-v { font-weight: bold; color: var(--gold); text-align: right; }
+  .sum-actions { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+  .bar { position: relative; display: flex; justify-content: space-between; font-size: 12px; padding: 3px 8px; background: #1b1626; border-radius: 6px; overflow: hidden; }
+  .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: #ff6fa833; z-index: 0; }
+  .bar span, .bar b { position: relative; z-index: 1; }
+  .howto { max-width: 560px; text-align: left; }
+  .howto ul { padding-left: 18px; font-size: 13px; line-height: 1.45; display: flex; flex-direction: column; gap: 6px; }
+  .logbox { max-width: 760px; width: 94vw; }
+  .logtext {
+    max-height: 56vh; overflow: auto; text-align: left; font-size: 11px; line-height: 1.35;
+    background: #0c0a14; border: 1px solid var(--line); border-radius: 8px; padding: 10px; white-space: pre-wrap; user-select: text;
+  }
 </style>

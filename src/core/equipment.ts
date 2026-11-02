@@ -195,6 +195,33 @@ export function buildCtx(base: Omit<ItemCtx, 'poisonFaces' | 'shieldFaces' | 'fi
   return { ...base, poisonFaces: poison, shieldFaces: shield, fireFaces: fire, enchantedFaces: poison + shield + fire, multFaces: mults };
 }
 
+/** Quali oggetti stanno contribuendo al danno nel lancio corrente, e come */
+export function describeActiveItems(items: readonly (EquipmentItem | null)[], ctx: ItemCtx): string[] {
+  const out: string[] = [];
+  const probe: DamagePayload = {
+    baseStr: new Decimal(0), flatAdded: new Decimal(0), multiplier: new Decimal(1), finalDamage: new Decimal(100)
+  };
+  for (const it of items) {
+    if (!it) continue;
+    if (it.apply) {
+      const r = it.apply(probe, ctx);
+      const parts: string[] = [];
+      if (r.flatAdded.gt(0)) parts.push(`+${r.flatAdded.toNumber().toFixed(0)} piatto`);
+      if (!r.multiplier.eq(1)) parts.push(`×${+r.multiplier.toNumber().toFixed(2)}`);
+      if (!r.finalDamage.eq(100)) {
+        // due sonde distinguono un bonus piatto da un moltiplicatore finale
+        const r2 = it.apply({ ...probe, finalDamage: new Decimal(200) }, ctx);
+        const d1 = r.finalDamage.minus(100).toNumber();
+        const d2 = r2.finalDamage.minus(200).toNumber();
+        parts.push(Math.abs(d1 - d2) < 1e-9 ? `+${+d1.toFixed(2)}` : `×${+r.finalDamage.div(100).toNumber().toFixed(3)}`);
+      }
+      if (parts.length > 0) out.push(`${it.name} (${parts.join(', ')})`);
+    }
+    if (it.mods) out.push(`${it.name} (regola: ${it.description})`);
+  }
+  return out;
+}
+
 export class EquipmentManager {
   public readonly slots: (EquipmentItem | null)[] = Array.from(
     { length: MAX_EQUIPMENT_SLOTS },
