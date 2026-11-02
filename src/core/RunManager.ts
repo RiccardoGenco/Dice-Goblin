@@ -19,7 +19,10 @@ export const CHAMPION_GOLD_MULTIPLIER = 2;
 export const BOSS_GOLD_MULTIPLIER = 3;
 /** Amplificazione delle stat nemiche nelle boss fight */
 export const CHAMPION_STAT_MULTIPLIER = 1.5; // TUNING: 1.8 -> 1.7 -> 1.5
-export const BOSS_STAT_MULTIPLIER = 1.8; // TUNING: 2.5 -> 2.2 -> 1.8
+/** Boss d'Atto: HP e attacco separati. Il vecchio x1.8 su entrambi valeva
+ *  circa x3.2 di difficoltà reale (HP x1.8 e colpi x1.8 sul giocatore). */
+export const BOSS_HP_MULTIPLIER = 1.5; // TUNING: 2.5 -> 2.2 -> 1.8 -> 1.5
+export const BOSS_STR_MULTIPLIER = 1.3; // TUNING: 1.8 -> 1.3
 
 export interface RunState {
   act: number;       // 1..TOTAL_ACTS

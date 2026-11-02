@@ -23,8 +23,8 @@ import {
   SkillId
 } from '@core/types';
 import { DiceWorld } from '@graphics/DiceWorld';
-import { RunManager, BOSS_STAT_MULTIPLIER, CHAMPION_STAT_MULTIPLIER, freshRunState } from '@core/RunManager';
-import { Shop, ShopOffer } from '@core/Shop';
+import { RunManager, BOSS_HP_MULTIPLIER, BOSS_STR_MULTIPLIER, CHAMPION_STAT_MULTIPLIER, freshRunState } from '@core/RunManager';
+import { Shop, ShopOffer, POTION_HEAL } from '@core/Shop';
 import { Forge, ForgeOperation, ForgeContext } from '@core/Forge';
 import { SaveManager } from '@core/SaveManager';
 import { UNLOCKABLE_DICE, UNLOCK_BY_ACT, getBlueprint } from '@core/diceCatalog';
@@ -169,7 +169,7 @@ export class GameManager {
     return {
       hpGrowth: BALANCE.ENEMY_HP_GROWTH, strGrowth: BALANCE.ENEMY_STR_GROWTH,
       enemyStr: BALANCE.ENEMY_BASE_STR, enemyVit: BALANCE.ENEMY_BASE_VIT,
-      champion: CHAMPION_STAT_MULTIPLIER, boss: BOSS_STAT_MULTIPLIER,
+      champion: CHAMPION_STAT_MULTIPLIER, bossHp: BOSS_HP_MULTIPLIER, bossStr: BOSS_STR_MULTIPLIER, potion: POTION_HEAL,
       gold: BALANCE.GOLD_REWARD_BASE, goldGrowth: BALANCE.GOLD_REWARD_GROWTH,
       costGrowth: BALANCE.SHOP_COST_GROWTH, heal: BALANCE.HEAL_PER_WIN,
       rerolls: BALANCE.REROLLS_PER_TURN
@@ -313,15 +313,12 @@ export class GameManager {
        Boss fight ogni 5 incontri: Campione (5°) x1.8, Boss (10°) x2.5. */
     const hpGrowth = new Decimal(BALANCE.ENEMY_HP_GROWTH).pow(level);
     const strGrowth = new Decimal(BALANCE.ENEMY_STR_GROWTH).pow(level);
-    const bossMult = this.run.isActBoss
-      ? BOSS_STAT_MULTIPLIER
-      : this.run.isChampion
-        ? CHAMPION_STAT_MULTIPLIER
-        : 1;
+    const hpMult = this.run.isActBoss ? BOSS_HP_MULTIPLIER : this.run.isChampion ? CHAMPION_STAT_MULTIPLIER : 1;
+    const strMult = this.run.isActBoss ? BOSS_STR_MULTIPLIER : this.run.isChampion ? CHAMPION_STAT_MULTIPLIER : 1;
     const enemyStats: CombatantStats = {
-      str: new Decimal(BALANCE.ENEMY_BASE_STR).times(strGrowth).times(bossMult),
-      int: new Decimal(1).times(strGrowth).times(bossMult),
-      vit: new Decimal(BALANCE.ENEMY_BASE_VIT).times(hpGrowth).times(bossMult),
+      str: new Decimal(BALANCE.ENEMY_BASE_STR).times(strGrowth).times(strMult),
+      int: new Decimal(1).times(strGrowth).times(strMult),
+      vit: new Decimal(BALANCE.ENEMY_BASE_VIT).times(hpGrowth).times(hpMult),
       lck: 0
     };
 
@@ -801,7 +798,8 @@ export class GameManager {
       this.bag,
       available,
       special,
-      this.equipment.ownedIds
+      this.equipment.ownedIds,
+      this.run.state.hpRatio
     );
     shopSpecial.set(special);
     this.log.add('shop', `${special ? 'Mercante Reale' : 'Mercante'} — oro ${formatBigNumber(this.run.state.gold)} — offerte: ${this.currentOffers.map(o => `${o.label} (${formatBigNumber(o.cost)})`).join('; ')}`);
@@ -845,6 +843,11 @@ export class GameManager {
       bag: this.bag,
       blueprints: UNLOCKABLE_DICE
     });
+    if (offer.kind === 'potion') {
+      const before = this.run.state.hpRatio;
+      this.run.state.hpRatio = Math.min(1, before + POTION_HEAL);
+      this.log.add('shop', `Pozione: HP ${Math.round(before * 100)}% → ${Math.round(this.run.state.hpRatio * 100)}%`);
+    }
     if (offer.kind === 'item') {
       const item = findItem(offer.itemId ?? '');
       if (item) this.equipment.equip(item);

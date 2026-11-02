@@ -199,3 +199,15 @@ describe('SaveManager — round-trip run e meta (GDD §2.2)', () => {
     expect(save.loadUnlocks()).toEqual(['dado-dorato', 'dado-ricorsivo']);
   });
 });
+
+describe('Pozione di Cura (sink dell\'oro)', () => {
+  it('compare solo se si è feriti e costa più a livelli alti', () => {
+    const shop = new Shop();
+    const bag = [new GoblinDie(Rarity.COMUNE)];
+    expect(shop.generateOffers(0, 0, bag, [], false, [], 1).some(o => o.kind === 'potion')).toBe(false);
+    const hurt0 = shop.generateOffers(0, 0, bag, [], false, [], 0.5).find(o => o.kind === 'potion')!;
+    const hurt8 = shop.generateOffers(8, 0, bag, [], false, [], 0.5).find(o => o.kind === 'potion')!;
+    expect(hurt0).toBeTruthy();
+    expect(hurt8.cost.gt(hurt0.cost)).toBe(true);
+  });
+});

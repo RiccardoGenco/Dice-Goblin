@@ -1,6 +1,7 @@
 import Decimal from 'break_infinity.js';
 import { GoblinDie } from '../../src/core/GoblinDie';
-import { RunManager, CHAMPION_STAT_MULTIPLIER, BOSS_STAT_MULTIPLIER } from '../../src/core/RunManager';
+import { POTION_HEAL } from '../../src/core/Shop';
+import { RunManager, CHAMPION_STAT_MULTIPLIER, BOSS_HP_MULTIPLIER, BOSS_STR_MULTIPLIER } from '../../src/core/RunManager';
 import { Forge } from '../../src/core/Forge';
 import { BattleEngine } from '../../src/core/BattleEngine';
 import { Shop } from '../../src/core/Shop';
@@ -65,12 +66,13 @@ async function fight(
   hpRatio: number, seed: number, policy: BotOptions['policy']
 ) {
   const L = run.level;
-  const mult = run.isActBoss ? BOSS_STAT_MULTIPLIER : run.isChampion ? CHAMPION_STAT_MULTIPLIER : 1;
+  const hpM = run.isActBoss ? BOSS_HP_MULTIPLIER : run.isChampion ? CHAMPION_STAT_MULTIPLIER : 1;
+  const strM = run.isActBoss ? BOSS_STR_MULTIPLIER : run.isChampion ? CHAMPION_STAT_MULTIPLIER : 1;
   const hpG = new Decimal(BALANCE.ENEMY_HP_GROWTH).pow(L), strG = new Decimal(BALANCE.ENEMY_STR_GROWTH).pow(L);
   const enemy = {
-    str: new Decimal(BALANCE.ENEMY_BASE_STR).times(strG).times(mult),
-    int: new Decimal(1).times(strG).times(mult),
-    vit: new Decimal(BALANCE.ENEMY_BASE_VIT).times(hpG).times(mult),
+    str: new Decimal(BALANCE.ENEMY_BASE_STR).times(strG).times(strM),
+    int: new Decimal(1).times(strG).times(strM),
+    vit: new Decimal(BALANCE.ENEMY_BASE_VIT).times(hpG).times(hpM),
     lck: 0
   };
   const eng = new BattleEngine(stats, enemy, bag, seededRNG(seed));
@@ -157,9 +159,9 @@ const RARITY_ORDER: Record<string, number> = { 'comune': 0, 'non-comune': 1, 'ra
 
 function shopVisit(shop: Shop, stats: any, bag: GoblinDie[], eq: EquipmentManager, run: RunManager, special: boolean): void {
   // come nel gioco: offerte generate UNA volta per visita, ognuna comprabile una volta
-  const offers = shop.generateOffers(run.level, run.state.purchases, bag, [], special, eq.ownedIds);
+  const offers = shop.generateOffers(run.level, run.state.purchases, bag, [], special, eq.ownedIds, run.state.hpRatio);
   const rank = (o: any) =>
-    o.kind === 'item' ? 10 + RARITY_ORDER[o.rarity]! : o.kind === 'stat-str-major' ? 9 : o.kind === 'stat-str' ? 8 : o.kind === 'stat-vit' ? 5 : 1;
+    o.kind === 'item' ? 10 + RARITY_ORDER[o.rarity]! : o.kind === 'stat-str-major' ? 9 : o.kind === 'stat-str' ? 8 : o.kind === 'stat-vit' ? 5 : o.kind === 'potion' ? 6 : 1;
   offers.sort((a, b) => rank(b) - rank(a));
   for (const o of offers) {
     if (run.state.gold.lt(o.cost)) continue;
@@ -173,6 +175,10 @@ function shopVisit(shop: Shop, stats: any, bag: GoblinDie[], eq: EquipmentManage
       }
       const item = findItem(o.itemId ?? '');
       if (item && run.spendGold(o.cost)) eq.equip(item);
+      continue;
+    }
+    if (o.kind === 'potion') {
+      if (run.state.hpRatio < 0.75 && run.spendGold(o.cost)) run.state.hpRatio = Math.min(1, run.state.hpRatio + POTION_HEAL);
       continue;
     }
     if (run.spendGold(o.cost)) shop.apply(o, { stats, bag, blueprints: UNLOCKABLE_DICE });

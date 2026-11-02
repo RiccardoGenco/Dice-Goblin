@@ -18,6 +18,8 @@ import { EquipmentItem, ITEMS, ITEM_RARITY_META, ItemRarity } from './equipment'
 // TUNING (balance sim): 1.25 -> 1.08. Il rincaro composto per
 // sempre a 1.25 distruggeva il potere d'acquisto (~x6e5 a fine run)
 export const PURCHASE_INFLATION = 1.05;
+/** Quota degli HP massimi curata da una Pozione (sink dell'oro: prima non esisteva cura a pagamento) */
+export const POTION_HEAL = 0.5;
 /** Sconto del Mercante Reale (dopo le boss fight): prezzi x0.7 */
 export const SPECIAL_DISCOUNT = 0.7;
 
@@ -25,6 +27,7 @@ export type OfferKind =
   | 'stat-str'
   | 'stat-str-major' // esclusiva del Mercante Reale
   | 'stat-vit'
+  | 'potion'
   | 'upgrade-face'
   | 'new-die'
   | 'item';
@@ -50,6 +53,7 @@ const BASE_COST: Record<OfferKind, number> = {
   'stat-str': 25,
   'stat-str-major': 60,
   'stat-vit': 20,
+  'potion': 40,
   'upgrade-face': 30,
   'new-die': 80,
   'item': 0 // il prezzo dipende dalla rarità (ITEM_BASE_COST)
@@ -120,7 +124,8 @@ export class Shop {
     bag: GoblinDie[],
     unlockedBlueprints: DieBlueprint[],
     special = false,
-    ownedItemIds: readonly string[] = []
+    ownedItemIds: readonly string[] = [],
+    hpRatio = 1
   ): ShopOffer[] {
     const offers: ShopOffer[] = [];
 
@@ -152,6 +157,18 @@ export class Shop {
       description: 'Più HP massimi dalla prossima battaglia',
       cost: this.cost('stat-vit', level, purchases, special)
     });
+
+    // Pozione: solo se si è feriti (l'offerta ha senso solo se cura qualcosa)
+    if (hpRatio < 0.98) {
+      offers.push({
+        id: 'offer-potion',
+        kind: 'potion',
+        icon: '🧪',
+        label: `Pozione di Cura (+${Math.round(POTION_HEAL * 100)}% HP)`,
+        description: 'Cura subito metà degli HP massimi',
+        cost: this.cost('potion', level, purchases, special)
+      });
+    }
 
     // Potenziamento di una faccia casuale della borsa
     const dieIndex = Math.floor(this.rng.next() * bag.length);
