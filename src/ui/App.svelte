@@ -106,11 +106,20 @@
     copied = true;
     setTimeout(() => { copied = false; }, 1800);
   }
-  function downloadLog(text: string): void {
+  async function downloadLog(text: string): Promise<void> {
+    const filename = `goblin-revenge-registro-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.txt`;
+    // nella pagina pubblicata il download passa dal visualizzatore (capability `downloads`)
+    const c = (window as unknown as { claude?: { use?: (n: string) => Promise<{ save: (r: { filename: string; data: string }) => Promise<unknown> } | null> } }).claude;
+    if (c?.use) {
+      try {
+        const dl = await c.use('downloads');
+        if (dl) { await dl.save({ filename, data: text }); return; }
+      } catch { /* rifiutato o non disponibile: si prova il metodo normale */ }
+    }
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `goblin-revenge-registro-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.txt`;
+    a.download = filename;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   }
