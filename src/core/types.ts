@@ -84,6 +84,8 @@ export interface EnemyIntent {
   value: Decimal;
   /** Durata in turni (usata da POISON/BUFF) */
   duration?: number;
+  /** Etichetta speciale dello schema (es. "Colpo pesante") */
+  tag?: string;
 }
 
 /* ------------------------------------------------------------

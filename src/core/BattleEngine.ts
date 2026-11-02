@@ -1,5 +1,6 @@
 import Decimal from 'break_infinity.js';
 import { GoblinDie } from './GoblinDie';
+import type { EnemyPattern, BossRules, IntentStep } from './enemies';
 import { DamagePipeline } from './DamagePipeline';
 import { SKILLS } from './skills';
 import { ItemCtx, ItemMods, buildCtx, neutralMods } from './equipment';
@@ -92,6 +93,13 @@ export class BattleEngine {
   public player: Combatant;
   public enemy: Combatant;
   public currentIntent: EnemyIntent | null = null;
+  /** Schema fisso del nemico (null = sorteggio, come nelle prime versioni) */
+  public enemyPattern: EnemyPattern | null = null;
+  /** Regole speciali del boss */
+  public bossRules: BossRules | null = null;
+  /** Passo dello schema del turno corrente */
+  private patternIdx = 0;
+  private patternTurn = 0;
 
   private listeners = new Map<BattleEventName, Listener[]>();
   private lastRoll: RollResult | null = null;
@@ -190,7 +198,7 @@ export class BattleEngine {
       });
     }
 
-    this.rerollsMax = BALANCE.REROLLS_PER_TURN + this.mods.extraRerolls;
+    this.rerollsMax = Math.max(0, BALANCE.REROLLS_PER_TURN + this.mods.extraRerolls - (this.bossRules?.rerollPenalty ?? 0));
     this.rerollsLeft = this.rerollsMax;
     await this.setState(BattleState.WAIT_PLAYER_ACTION);
   }
@@ -455,6 +463,11 @@ export class BattleEngine {
         break;
     }
     this.reflectRatio = null;
+    // Regola del boss: si cura a ogni turno nemico
+    const regen = this.bossRules?.regenPct;
+    if (regen && this.enemy.hp.gt(0)) {
+      this.enemy.hp = Decimal.min(this.enemy.maxHp, this.enemy.hp.plus(this.enemy.maxHp.times(regen)));
+    }
     await this.emitEvent('onEnemyAction', { intent });
 
     if (await this.checkBattleEnd()) return;
@@ -481,7 +494,37 @@ export class BattleEngine {
 
   /** IA deterministica minimale per l'MVP: pattern ciclico basato
    *  su STR nemica. Estendibile con pattern per-nemico. */
+  private intentFromStep(step: IntentStep): EnemyIntent {
+    const m = step.mult ?? 1;
+    const st = this.enemy.stats;
+    const out: EnemyIntent =
+      step.type === IntentType.ATTACK ? { type: step.type, value: st.str.times(2).times(m) } :
+      step.type === IntentType.SHIELD ? { type: step.type, value: st.str.times(1.5).times(m) } :
+      step.type === IntentType.POISON ? { type: step.type, value: st.int.times(3).times(m), duration: 3 } :
+      { type: step.type, value: st.str.times(0.15).times(m) };
+    if (step.tag) out.tag = step.tag;
+    return out;
+  }
+
+  /** I prossimi intenti dello schema (dopo quello corrente), con le statistiche di adesso:
+   *  un Potenziamento in mezzo li rende approssimativi. Vuoto senza schema. */
+  public peekIntents(count: number): EnemyIntent[] {
+    const pat = this.enemyPattern;
+    if (!pat) return [];
+    const out: EnemyIntent[] = [];
+    for (let i = 1; i <= count; i++) {
+      out.push(this.intentFromStep(pat.steps[(this.patternIdx + i) % pat.steps.length]!));
+    }
+    return out;
+  }
+
   private computeEnemyIntent(): EnemyIntent {
+    if (this.enemyPattern) {
+      const steps = this.enemyPattern.steps;
+      // il passo avanza a ogni turno, quindi parte da 0 solo al primo
+      this.patternIdx = this.patternTurn++ % steps.length;
+      return this.intentFromStep(steps[this.patternIdx]!);
+    }
     const roll = this.rng.next();
     if (roll < 0.6) {
       return { type: IntentType.ATTACK, value: this.enemy.stats.str.times(2) };

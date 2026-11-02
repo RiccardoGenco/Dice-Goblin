@@ -3,7 +3,7 @@
   import Sprite from './Sprite.svelte';
   import { SPRITES } from './spriteCatalog';
   import {
-    playerView, enemyView, intentView, enemyInfo, stageFx, battleResult,
+    playerView, enemyView, intentView, intentQueue, bossRuleText, enemyInfo, stageFx, battleResult,
     overflowActive, actLevel
   } from './stores';
 
@@ -132,6 +132,12 @@
         <span class="bl">{$intentView.label}</span>
         <b>{$intentView.value}</b>
       </div>
+      {#if $intentQueue.length}
+        <div class="queue" title="Prossimi intenti">
+          {#each $intentQueue as q, i}<span class="q q{i}">{q.icon} {q.value}</span>{/each}
+        </div>
+      {/if}
+      {#if $bossRuleText}<div class="rule">{$bossRuleText}</div>{/if}
     {/if}
     <div class="body enemy-body {enemyAnim}" class:dead style="filter:{enemyFilter}">
       <Sprite id={$enemyInfo.sprite} {scale} flip tint={$enemyInfo.tint} />
@@ -270,6 +276,10 @@
     content: ''; position: absolute; left: 50%; bottom: -8px; margin-left: -6px;
     border: 6px solid transparent; border-top-color: #ff5c8a; border-bottom: 0;
   }
+  .queue { display: flex; gap: 6px; margin-bottom: 4px; font-size: calc(12px * var(--ui)); z-index: 3; }
+  .q { padding: 1px 7px; background: rgba(43,21,32,0.8); border: 1px solid #7a3550; border-radius: 8px; opacity: 0.85; }
+  .q1 { opacity: 0.6; }
+  .rule { z-index: 3; font-size: calc(11px * var(--ui)); max-width: 220px; text-align: center; color: #ffb3c6; margin-bottom: 4px; text-shadow: 0 1px 2px #000; }
   .bl { opacity: 0.8; font-size: calc(12px * var(--ui)); }
   @keyframes bob { 50% { transform: translateY(-3px); } }
 

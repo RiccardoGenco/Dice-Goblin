@@ -32,6 +32,8 @@ import {
   playerView,
   enemyView,
   intentView,
+  intentQueue,
+  bossRuleText,
   battleState,
   rolledChips,
   overflowActive,
@@ -71,6 +73,7 @@ import {
   RunSummaryView
 } from './ui/stores';
 import { ACT_BOSSES, CLASS_SPRITES } from './ui/spriteCatalog';
+import { enemyProfileFor, EnemyProfile } from './core/enemies';
 
 /* ============================================================
  * GameManager — Il collante (Piano Fase 5)
@@ -329,6 +332,11 @@ export class GameManager {
     };
 
     this.engine = new BattleEngine(this.playerStats, enemyStats, this.bag);
+    this.enemyProfile = enemyProfileFor(this.run.state.act, this.run.state.encounter, this.run.isChampion, this.run.isActBoss);
+    this.engine.enemyPattern = this.enemyProfile.pattern;
+    this.engine.bossRules = this.enemyProfile.rules;
+    bossRuleText.set(this.enemyProfile.rules?.text ?? '');
+    intentQueue.set([]);
     this.engine.player.hp = this.engine.player.maxHp.times(this.run.state.hpRatio);
     this.syncEquipment();
     this.registerListeners();
@@ -366,6 +374,7 @@ export class GameManager {
   }
 
   private enemyName = 'Avventuriero';
+  private enemyProfile: EnemyProfile | null = null;
   /** Moltiplicatore di overflow del tiro corrente (1 = nessun overflow) */
   private overflowMult = new Decimal(1);
 
@@ -459,6 +468,10 @@ export class GameManager {
     if (!resumed) this.log.stats.fights++;
     const items = this.equipment.slots.filter((x): x is EquipmentItem => x !== null).map(i => i.name);
     this.log.add('fight', resumed ? `↻ Ripresa ${header}` : header);
+    if (this.enemyProfile) {
+      const pr = this.enemyProfile;
+      this.log.add('note', `Schema ${pr.pattern.name}: ${pr.pattern.steps.map(st => (st.tag ?? INTENT_META[st.type].label)).join(' → ')}${pr.rules ? ` · Regola: ${pr.rules.text}` : ''}`);
+    }
     this.log.add('note', `Goblin: HP ${this.hpText(e.player)}, STR ${formatBigNumber(e.player.stats.str)}, VIT ${formatBigNumber(this.playerStats.vit)} · oggetti: ${items.join(', ') || 'nessuno'} · oro ${formatBigNumber(this.run.state.gold)}`);
     this.persistLog();
   }
@@ -484,9 +497,14 @@ export class GameManager {
       this.log.add('enemy', `Intento: ${meta.icon} ${meta.label} ${formatBigNumber(intent.value)}`);
       intentView.set({
         icon: meta.icon,
-        label: meta.label,
+        label: intent.tag ?? meta.label,
         value: formatBigNumber(intent.value)
       });
+      intentQueue.set(this.engine.peekIntents(2).map(i => ({
+        icon: INTENT_META[i.type].icon,
+        label: i.tag ?? INTENT_META[i.type].label,
+        value: formatBigNumber(i.value)
+      })));
     });
 
     e.on('onDicesRolled', p => {

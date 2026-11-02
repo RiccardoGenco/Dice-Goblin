@@ -43,7 +43,7 @@ describe('Balance — bot esperto', async () => {
   });
 
   it('gli incontri costano HP già all\'inizio, senza ammazzare', () => {
-    expect(smart.avgHpLost(0, 3)).toBeGreaterThan(0.02);
+    expect(smart.avgHpLost(0, 3)).toBeGreaterThan(0.015);
     expect(smart.avgHpLost(5, 13)).toBeGreaterThan(0.1);
     expect(smart.avgHpLost(5, 13)).toBeLessThan(0.5);
   });

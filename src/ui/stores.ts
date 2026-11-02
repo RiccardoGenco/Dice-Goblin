@@ -40,6 +40,10 @@ export const emptyCombatant = (): CombatantView => ({
 export const playerView = writable<CombatantView>(emptyCombatant());
 export const enemyView = writable<CombatantView>(emptyCombatant());
 export const intentView = writable<IntentView | null>(null);
+/** Prossimi intenti dello schema del nemico (dopo quello corrente) */
+export const intentQueue = writable<IntentView[]>([]);
+/** Regola speciale del boss, se c'è */
+export const bossRuleText = writable<string>('');
 export const battleState = writable<BattleState>(BattleState.INIT_TURN);
 export const rolledChips = writable<DieChip[]>([]);
 export const overflowActive = writable(false);

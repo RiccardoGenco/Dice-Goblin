@@ -1,4 +1,5 @@
 import Decimal from 'break_infinity.js';
+import { enemyProfileFor } from '../../src/core/enemies';
 import { GoblinDie } from '../../src/core/GoblinDie';
 import { POTION_HEAL } from '../../src/core/Shop';
 import { RunManager, CHAMPION_STAT_MULTIPLIER, BOSS_HP_MULTIPLIER, BOSS_STR_MULTIPLIER } from '../../src/core/RunManager';
@@ -76,6 +77,8 @@ async function fight(
     lck: 0
   };
   const eng = new BattleEngine(stats, enemy, bag, seededRNG(seed));
+  const prof = enemyProfileFor(run.state.act, run.state.encounter, run.isChampion, run.isActBoss);
+  eng.enemyPattern = prof.pattern; eng.bossRules = prof.rules;
   eq.syncPipeline(eng.pipeline, () => eng.itemCtx());
   eng.mods = eq.mods();
   eng.player.hp = eng.player.maxHp.times(hpRatio);
