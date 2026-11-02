@@ -81,7 +81,7 @@ export class DieTextureSet {
     const texture = this.textures[faceIndex];
     if (!face || !ctx || !texture) return;
 
-    this.drawFace(ctx, face, faceIndex + 1);
+    this.drawFace(ctx, face);
     texture.needsUpdate = true; // aggiornamento GPU in-place
   }
 
@@ -89,7 +89,7 @@ export class DieTextureSet {
     for (let i = 0; i < 6; i++) this.redrawFace(i);
   }
 
-  private drawFace(ctx: CanvasRenderingContext2D, face: DieFace, pip: number): void {
+  private drawFace(ctx: CanvasRenderingContext2D, face: DieFace): void {
     const s = TEXTURE_SIZE;
     const style = FACE_STYLE[face.type];
     const glow = RARITY_GLOW[this.die.rarity];
@@ -126,17 +126,6 @@ export class DieTextureSet {
     const prefix = face.type === FaceType.MULTIPLIER ? '×' : '';
     ctx.fillText(prefix + formatFaceValue(face.value), s / 2, s * 0.58);
 
-    // Numero del dado (pip 1-6): è quello che conta per le combinazioni
-    const r = s * 0.1;
-    const px = s * 0.2, py = s * 0.8;
-    ctx.fillStyle = '#e8e4f4';
-    ctx.beginPath();
-    ctx.arc(px, py, r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#16131f';
-    ctx.font = `bold ${r * 1.5}px monospace`;
-    ctx.textBaseline = 'middle';
-    ctx.fillText(String(pip), px, py + r * 0.08);
   }
 
   /** Rilascio esplicito delle risorse GPU alla distruzione del dado */

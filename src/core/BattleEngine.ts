@@ -2,7 +2,6 @@ import Decimal from 'break_infinity.js';
 import { GoblinDie } from './GoblinDie';
 import { DamagePipeline } from './DamagePipeline';
 import { SKILLS } from './skills';
-import { ComboResult, comboOfRoll } from './combos';
 import {
   BALANCE,
   BattleState,
@@ -92,6 +91,8 @@ export class BattleEngine {
   private listeners = new Map<BattleEventName, Listener[]>();
   private lastRoll: RollResult | null = null;
   private rerollsLeft = 0;
+  /** Rilanci messi da parte da Tiro Truccato per il turno successivo */
+  private bankedRerolls = 0;
   /** Rilanci gratuiti ancora disponibili nel turno */
   public get rerolls(): number { return this.rerollsLeft; }
 
@@ -173,7 +174,8 @@ export class BattleEngine {
       });
     }
 
-    this.rerollsLeft = BALANCE.REROLLS_PER_TURN;
+    this.rerollsLeft = Math.min(BALANCE.MAX_REROLLS, BALANCE.REROLLS_PER_TURN + this.bankedRerolls);
+    this.bankedRerolls = 0;
     await this.setState(BattleState.WAIT_PLAYER_ACTION);
   }
 
@@ -268,19 +270,12 @@ export class BattleEngine {
     return { active: !!r?.overflowed, mult: r?.overflowMultiplier ?? new Decimal(1) };
   }
 
-  /** Combinazione di dadi del lancio corrente */
-  public getCombo(): ComboResult | null {
-    const r = this.lastRoll;
-    return r ? comboOfRoll(r.faces, r.sources, r.baseCount) : null;
-  }
-
   /** Danno del lancio corrente con un dato vettore mossa (anteprima e
-   *  risoluzione usano lo STESSO calcolo, overflow e combo inclusi). */
-  public calcDamage(skillMod: Decimal, comboPower = 1): Decimal {
+   *  risoluzione usano lo STESSO calcolo, overflow incluso). */
+  public calcDamage(skillMod: Decimal): Decimal {
     const r = this.lastRoll;
     if (!r) return new Decimal(0);
-    const combo = comboOfRoll(r.faces, r.sources, r.baseCount).mult.pow(comboPower);
-    let dmg = this.pipeline.calculateTurnDamage(this.player.stats.str, r.faces, skillMod, combo);
+    let dmg = this.pipeline.calculateTurnDamage(this.player.stats.str, r.faces, skillMod);
     if (r.overflowed) dmg = dmg.times(r.overflowMultiplier);
     return dmg;
   }
@@ -294,8 +289,9 @@ export class BattleEngine {
 
     const skill = SKILLS[skillId];
 
-    // Pipeline a 3 fasi (FLAT -> MULT -> skillMod) + combinazione + middleware
-    const damage = this.calcDamage(skill.skillMod, skill.comboPower);
+    // Pipeline a 3 fasi (FLAT -> MULT -> skillMod) + middleware passivi
+    const damage = this.calcDamage(skill.skillMod);
+    if (skill.banksRerolls) this.bankedRerolls = this.rerollsLeft;
 
     if (skill.convertsToShield) {
       // Scudo del Goblin: il danno diventa Punti Scudo temporanei

@@ -7,7 +7,7 @@
   import { MAX_EQUIPMENT_SLOTS } from '@core/equipment';
   import {
     playerView, enemyView, intentView, battleState, rolledChips,
-    overflowActive, rerollsLeft, diceBusy, comboView, battleResult, logLines, equipVersion,
+    overflowActive, rerollsLeft, diceBusy, battleResult, logLines, equipVersion,
     uiPhase, goldView, runLabel, shopOffers, shopSpecial, rewardBanner,
     crossroadSpecial, forgeSpecial, forgeOpsLeft, forgeVersion,
     chainView, skillPreview, rollNonce, runProgress
@@ -102,7 +102,7 @@
     { id: SkillId.SGANCIO_BRUTALE, icon: '💥', hint: 'Danno ×1.5' },
     { id: SkillId.SCUDO_GOBLIN,    icon: '🛡️', hint: 'Danno → Scudo' },
     { id: SkillId.SPUTO_ACIDO,     icon: '☠️', hint: '20% Veleno ×3 turni' },
-    { id: SkillId.COLPO_COMBO,     icon: '🎯', hint: '×0.8, combo al quadrato' }
+    { id: SkillId.TIRO_TRUCCATO,   icon: '🎲', hint: '×0.5, tieni i rilanci' }
   ];
 
   $: canAct = $battleState === BattleState.WAIT_PLAYER_ACTION && !$diceBusy && !$battleResult;
@@ -190,17 +190,11 @@
             class:selected={selectedChips.includes(i)}
             class:selectable={canReroll}
             on:click={() => toggleChip(i)}
-          >{chip.text}{#if chip.pip}<sup class="cpip">{chip.pip}</sup>{/if}</button>
+          >{chip.text}</button>
         {/each}
       {/key}
     </div>
     <div class="side">
-      {#if $comboView && $battleState === BattleState.WAIT_PLAYER_ACTION}
-        <div class="combo t{$comboView.tier}" title="Combinazione dei numeri sui dadi">
-          <small>Combo</small> <b>{$comboView.name}</b>
-          {#if $comboView.tier > 0}<span class="c-mult">×{$comboView.mult}</span>{/if}
-        </div>
-      {/if}
       {#if $chainView && $battleState === BattleState.WAIT_PLAYER_ACTION}
         <div class="formula" class:hot={$chainView.tier >= 2}>
           {#if $chainView.multCount > 0}<span class="f-mult">×{$chainView.mult}</span>{/if}
@@ -458,7 +452,6 @@
   .chip.multiplier { border-color: var(--pink); color: var(--pink); font-weight: 700; box-shadow: 0 0 10px rgba(255,92,138,0.55); }
   .chip.buff { border-color: var(--green); color: var(--green); }
   .chip.recursive { border-color: var(--cyan); color: var(--cyan); }
-  .cpip { font-size: 11px; font-weight: 700; margin-left: 4px; padding: 0 4px; border-radius: 8px; background: #e8e4f4; color: #16131f; vertical-align: top; }
   .chip.selectable { cursor: pointer; }
   .chip.selected { outline: 3px solid #ffb84c; outline-offset: 2px; }
   .formula { display: flex; gap: 18px; align-items: baseline; white-space: nowrap; }
@@ -467,12 +460,6 @@
   .f-pow small { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 2px; }
   .f-pow b { color: var(--gold); font-size: 28px; font-weight: 700; }
   .side { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; justify-content: flex-end; }
-  .combo { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; color: var(--muted); }
-  .combo small { font-size: 12px; text-transform: uppercase; letter-spacing: 2px; }
-  .combo b { font-size: 20px; color: var(--text, #e8e4f4); }
-  .combo .c-mult { font-weight: 700; font-size: 22px; color: var(--cyan); }
-  .combo.t2 b, .combo.t2 .c-mult { color: #ffb84c; }
-  .combo.t3 b, .combo.t3 .c-mult, .combo.t4 b, .combo.t4 .c-mult { color: var(--pink); text-shadow: 0 0 10px rgba(255,92,138,0.6); }
   .reroll {
     background: #1f1a33; border: 2px solid #ffb84c; color: #ffe2a8; border-radius: 10px;
     padding: 6px 14px; font: inherit; font-weight: 700; cursor: pointer; display: flex; flex-direction: column; align-items: center; line-height: 1.1;
@@ -529,8 +516,7 @@
     .f-pow b { font-size: 22px; }
     .formula { justify-content: space-between; }
     .side { justify-content: space-between; gap: 8px; }
-    .combo b { font-size: 16px; }
-    .dock { grid-template-columns: 1fr; }
+      .dock { grid-template-columns: 1fr; }
     .hand { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .card { padding: 8px 6px 6px; flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 2px 8px; }
     .c-icon { font-size: 24px; }

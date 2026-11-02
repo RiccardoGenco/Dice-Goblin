@@ -27,8 +27,6 @@ export interface IntentView {
 export interface DieChip {
   text: string;      // es. "×2", "+STR 5", "12"
   cssClass: string;  // normal | multiplier | buff | recursive
-  /** numero del dado (1-6), quello che conta per le combinazioni */
-  pip?: number | undefined;
 }
 
 export const emptyCombatant = (): CombatantView => ({
@@ -49,9 +47,6 @@ export const overflowActive = writable(false);
 export const rerollsLeft = writable(0);
 /** true mentre i dadi 3D sono in movimento dopo un rilancio */
 export const diceBusy = writable(false);
-/** Combinazione dei dadi del lancio corrente (null prima del lancio) */
-export interface ComboView { name: string; mult: string; tier: 0 | 1 | 2 | 3 | 4; id: string }
-export const comboView = writable<ComboView | null>(null);
 export const battleResult = writable<'victory' | 'defeat' | null>(null);
 export const actLevel = writable(0);
 export const logLines = writable<string[]>([]);

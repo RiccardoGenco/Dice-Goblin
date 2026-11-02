@@ -17,7 +17,7 @@ export const SKILLS: Record<SkillId, SkillDefinition> = {
     convertsToShield: false,
     poisonRatio: null,
     poisonTurns: 0,
-    comboPower: 1
+    banksRerolls: false
   },
   [SkillId.SCUDO_GOBLIN]: {
     id: SkillId.SCUDO_GOBLIN,
@@ -26,7 +26,7 @@ export const SKILLS: Record<SkillId, SkillDefinition> = {
     convertsToShield: true,
     poisonRatio: null,
     poisonTurns: 0,
-    comboPower: 1
+    banksRerolls: false
   },
   [SkillId.SPUTO_ACIDO]: {
     id: SkillId.SPUTO_ACIDO,
@@ -35,15 +35,15 @@ export const SKILLS: Record<SkillId, SkillDefinition> = {
     convertsToShield: false,
     poisonRatio: new Decimal(0.2), // 20% del danno come Veleno
     poisonTurns: 3,                // per 3 turni
-    comboPower: 1
+    banksRerolls: false
   },
-  [SkillId.COLPO_COMBO]: {
-    id: SkillId.COLPO_COMBO,
-    name: 'Colpo Combo',
-    skillMod: new Decimal(0.8), // un po' meno danno di base...
+  [SkillId.TIRO_TRUCCATO]: {
+    id: SkillId.TIRO_TRUCCATO,
+    name: 'Tiro Truccato',
+    skillMod: new Decimal(0.5), // danno dimezzato...
     convertsToShield: false,
     poisonRatio: null,
     poisonTurns: 0,
-    comboPower: 2 // ...ma la combinazione di dadi vale al quadrato
+    banksRerolls: true // ...ma i rilanci non usati restano per il turno dopo
   }
 };

@@ -1,6 +1,5 @@
 import Decimal from 'break_infinity.js';
 import { BattleEngine, Combatant } from '@core/BattleEngine';
-import { pipOf } from '@core/combos';
 import { GoblinDie } from '@core/GoblinDie';
 import { formatBigNumber } from '@core/format';
 import { summarizeChain, multTier, magnitudeOf } from '@core/chain';
@@ -32,7 +31,6 @@ import {
   overflowActive,
   rerollsLeft,
   diceBusy,
-  comboView,
   battleResult,
   actLevel,
   equipVersion,
@@ -238,7 +236,7 @@ export class GameManager {
   private refreshPreview(): void {
     const faces = this.lastFaces;
     if (faces.length === 0) return;
-    const calc = (mod: Decimal, power = 1) => this.engine.calcDamage(mod, power);
+    const calc = (mod: Decimal) => this.engine.calcDamage(mod);
 
     const fmt = formatBigNumber;
     const sgancio = calc(SKILLS[SkillId.SGANCIO_BRUTALE].skillMod);
@@ -246,14 +244,13 @@ export class GameManager {
     const sputoBase = calc(SKILLS[SkillId.SPUTO_ACIDO].skillMod);
     const sputo = SKILLS[SkillId.SPUTO_ACIDO];
     const veleno = sputoBase.times(sputo.poisonRatio ?? 0).times(Decimal.max(this.engine.player.stats.int, 1));
-    const colpo = SKILLS[SkillId.COLPO_COMBO];
-    const combo = calc(colpo.skillMod, colpo.comboPower);
+    const truccato = calc(SKILLS[SkillId.TIRO_TRUCCATO].skillMod);
 
     skillPreview.set({
       [SkillId.SGANCIO_BRUTALE]: `${fmt(sgancio)} danni`,
       [SkillId.SCUDO_GOBLIN]: `+${fmt(scudo)} scudo`,
       [SkillId.SPUTO_ACIDO]: `${fmt(sputoBase)} + ☠${fmt(veleno)}×${sputo.poisonTurns}`,
-      [SkillId.COLPO_COMBO]: `${fmt(combo)} danni`
+      [SkillId.TIRO_TRUCCATO]: `${fmt(truccato)} danni · tieni ${this.engine.rerolls} rilanci`
     });
 
     const s = summarizeChain(faces);
@@ -264,13 +261,6 @@ export class GameManager {
       multCount: s.multCount
     });
 
-    const c = this.engine.getCombo();
-    comboView.set(c ? {
-      id: c.def.id,
-      name: c.def.name,
-      mult: String(c.def.mult),
-      tier: c.def.mult >= 4 ? 4 : c.def.mult >= 2.5 ? 3 : c.def.mult >= 1.8 ? 2 : c.def.mult > 1 ? 1 : 0
-    } : null);
     rerollsLeft.set(this.engine.rerolls);
     const ov = this.engine.overflow;
     overflowActive.set(ov.active);
@@ -281,9 +271,8 @@ export class GameManager {
   private announceChain(): void {
     const s = summarizeChain(this.lastFaces);
     const tier = multTier(s.multProduct);
-    if (tier > 0) { emitFx('center', 'mult', `×${formatBigNumber(s.multProduct)}`, tier); return; }
-    const c = this.engine.getCombo();
-    if (c && c.def.id !== 'none' && c.def.mult >= 2.2) emitFx('center', 'mult', c.def.name, c.def.mult >= 4 ? 3 : 2);
+    if (tier > 0) emitFx('center', 'mult', `×${formatBigNumber(s.multProduct)}`, tier);
+
   }
 
   private refreshRunHeader(): void {
@@ -324,7 +313,7 @@ export class GameManager {
       this.lastSources = sources;
       overflowActive.set(false);
       this.overflowMult = new Decimal(1);
-      rolledChips.set(faces.map((f, i) => this.toChip(f, pipOf(sources[i]!, f))));
+      rolledChips.set(faces.map(f => this.toChip(f)));
       rollNonce.update(n => n + 1);
       this.refreshPreview();
       // ← Il Visual Blocking Callback: la logica attende il 3D;
@@ -444,13 +433,13 @@ export class GameManager {
     else this.openForge(this.intermissionSpecial);
   }
 
-  private toChip(face: DieFace, pip?: number): DieChip {
+  private toChip(face: DieFace): DieChip {
     const v = formatBigNumber(face.value);
     const text =
       face.type === FaceType.MULTIPLIER ? `×${v}` :
       face.type === FaceType.BUFF_STR ? `+STR ${v}` :
       face.type === FaceType.RECURSIVE ? `↻` : v;
-    return { text, cssClass: CHIP_CLASS[face.type], pip };
+    return { text, cssClass: CHIP_CLASS[face.type] };
   }
 
   private refreshCombatants(): void {
@@ -485,7 +474,7 @@ export class GameManager {
     const keep = new Set<number>();
     for (let i = 0; i < before; i++) if (!chosen.has(i)) keep.add(i);
     // lastFaces e lastSources sono le STESSE reference mutate dall'engine
-    rolledChips.set(this.lastFaces.map((f, i) => this.toChip(f, pipOf(this.lastSources[i]!, f))));
+    rolledChips.set(this.lastFaces.map(f => this.toChip(f)));
     rollNonce.update(n => n + 1);
     this.refreshPreview();
     pushLog(`🎲 Rilanciati ${chosen.size} dadi (restano ${this.engine.rerolls})`);

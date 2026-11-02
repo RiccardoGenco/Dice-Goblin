@@ -45,8 +45,7 @@ export class DamagePipeline {
   public calculateTurnDamage(
     baseStr: Decimal,
     rolledFaces: DieFace[],
-    skillMod: Decimal,
-    comboMult: Decimal = new Decimal(1)
+    skillMod: Decimal
   ): Decimal {
     let payload: DamagePayload = {
       baseStr: new Decimal(baseStr),
@@ -81,10 +80,6 @@ export class DamagePipeline {
         totalDamage = totalDamage.times(face.value);
       }
     }
-
-    // --- Combinazione di dadi (coppia, tris, scala...): moltiplica
-    //     insieme alle facce MULTIPLIER, nella stessa fase.
-    totalDamage = totalDamage.times(comboMult);
 
     // --- MULT: moltiplicatori percentuali dei passivi
     payload.finalDamage = totalDamage;
