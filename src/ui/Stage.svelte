@@ -150,7 +150,7 @@
   <!-- ===== Goblin (sinistra) ===== -->
   <div class="slot player-slot">
     <div class="body player-body {playerAnim}" class:dead={lost}>
-      <Sprite id={heroSprite} once={heroSprite !== 'hero'} scale={heroScale} />
+      <Sprite id={heroSprite} flip once={heroSprite !== 'hero'} scale={heroScale} />
     </div>
     <div class="shadow" style="width:{heroW * 0.8}px"></div>
   </div>
