@@ -12,6 +12,8 @@ import knight from '../assets/sprites/knight.png?inline';
 import mender from '../assets/sprites/mender.png?inline';
 import moth from '../assets/sprites/moth.png?inline';
 import runner from '../assets/sprites/runner.png?inline';
+import bard from '../assets/sprites/bard.png?inline';
+import rogue from '../assets/sprites/rogue.png?inline';
 import orc from '../assets/sprites/orc.png?inline';
 import gargoyle from '../assets/sprites/gargoyle.png?inline';
 import wyvern from '../assets/sprites/wyvern.png?inline';
@@ -34,6 +36,8 @@ export const SPRITES = {
   mender:   { url: mender,   size: 32, frames: 8, fps: 7 },
   moth:     { url: moth,     size: 32, frames: 8, fps: 10 },
   runner:   { url: runner,   size: 32, frames: 8, fps: 12 },
+  bard:     { url: bard,     size: 32, frames: 8, fps: 8 },
+  rogue:    { url: rogue,    size: 32, frames: 8, fps: 12 },
   orc:      { url: orc,      size: 32, frames: 8, fps: 7 },
   gargoyle: { url: gargoyle, size: 64, frames: 8, fps: 8 },
   wyvern:   { url: wyvern,   size: 64, frames: 8, fps: 8 },
@@ -61,8 +65,8 @@ export const CLASS_SPRITES: { name: string; sprite: SpriteId; tint: TintId }[] =
   { name: 'Mago',      sprite: 'skull',  tint: 'none' },
   { name: 'Paladino',  sprite: 'heavy',  tint: 'none' },
   { name: 'Chierico',  sprite: 'mender', tint: 'none' },
-  { name: 'Bardo',     sprite: 'moth',   tint: 'none' },
-  { name: 'Ladro',     sprite: 'runner', tint: 'shadow' }
+  { name: 'Bardo',     sprite: 'bard',   tint: 'none' },
+  { name: 'Ladro',     sprite: 'rogue',  tint: 'none' }
 ];
 
 /** Boss d'Atto con identità fissa (content_specs §2) */
