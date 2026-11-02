@@ -92,7 +92,7 @@ export interface ShopOfferView {
 
 /** 'battle' = combattimento; 'crossroad' = bivio a due porte;
  *  'shop'/'forge' = intermezzi; 'run-complete' = terzo boss. */
-export const uiPhase = writable<'battle' | 'crossroad' | 'shop' | 'forge' | 'run-complete'>('battle');
+export const uiPhase = writable<'battle' | 'crossroad' | 'shop' | 'forge' | 'event' | 'reward' | 'run-complete'>('battle');
 export const goldView = writable('0');
 /** Posizione nella run, per la barra di progresso (10 incontri per Atto) */
 export const runProgress = writable({ act: 1, encounter: 1 });
@@ -119,6 +119,22 @@ export interface ForgeDieView {
 }
 /** true = porte dorate (dopo Campione/Boss) */
 export const crossroadSpecial = writable(false);
+
+/** Porte del bivio normale (le dorate dopo il Campione usano le due porte fisse) */
+export interface DoorView { kind: string; icon: string; label: string; hint: string }
+export const doors = writable<DoorView[]>([]);
+
+/** Evento in corso: prima le scelte, poi l'esito */
+export interface EventView {
+  icon: string; title: string; text: string;
+  options: { label: string; hint: string; blocked: string | null }[];
+  result: string | null;
+}
+export const eventView = writable<EventView | null>(null);
+
+/** Premio dell'Élite: un oggetto a scelta */
+export interface RewardView { id: string; icon: string; name: string; description: string; rarity: string; note: string }
+export const rewardChoices = writable<RewardView[]>([]);
 export const forgeSpecial = writable(false);
 export const forgeOpsLeft = writable(0);
 /** bump per ricalcolare viste e preventivi della forgia */

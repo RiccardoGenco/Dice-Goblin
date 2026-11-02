@@ -14,7 +14,7 @@
     overflowActive, settings, handSelection, handInfo, diceBusy, effectsView, battleResult, logLines, equipVersion,
     menuOpen, menuInfo, runSummary,
     uiPhase, goldView, runLabel, shopOffers, shopInfo, shopSpecial, rewardBanner,
-    crossroadSpecial, forgeSpecial, forgeOpsLeft, forgeVersion,
+    crossroadSpecial, doors, eventView, rewardChoices, forgeSpecial, forgeOpsLeft, forgeVersion,
     chainView, skillPreview, skillHints, rollNonce, runProgress
   } from './stores';
 
@@ -408,16 +408,56 @@
         {#if $rewardBanner}<p class="unlock"><Rich text={$rewardBanner} /></p>{/if}
         <p class="hint-line">Scegli una porta: l'altra si chiuderà. <Icon e="💰" /> {$goldView} oro</p>
         <div class="doors">
-          <button class="door" class:golden={$crossroadSpecial} on:click={() => gm?.chooseDoor('shop')}>
-            <span class="icon"><Rich text={$crossroadSpecial ? '👑' : '🛒'} /></span>
-            <span class="label">{$crossroadSpecial ? 'Mercante Reale' : 'Il Mercante'}</span>
-            <span class="hint">{$crossroadSpecial ? 'Sconto 30% e offerta premium' : 'Stat, oggetti e dadi'}</span>
-          </button>
-          <button class="door" class:golden={$crossroadSpecial} on:click={() => gm?.chooseDoor('forge')}>
-            <span class="icon"><Icon e="🔨" /></span>
-            <span class="label">{$crossroadSpecial ? 'Gran Forgia' : 'La Forgia'}</span>
-            <span class="hint">{$crossroadSpecial ? '3 operazioni, Trasmutazione -50%' : 'Scolpisci le facce dei dadi'}</span>
-          </button>
+          {#each $doors as d}
+            <button class="door" class:golden={$crossroadSpecial} class:elite={d.kind === 'elite'} on:click={() => gm?.chooseDoor(d.kind)}>
+              <span class="icon"><Icon e={d.icon} /></span>
+              <span class="label">{d.label}</span>
+              <span class="hint">{d.hint}</span>
+            </button>
+          {/each}
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ===== Overlay Evento ===== -->
+  {#if $uiPhase === 'event' && $eventView}
+    <div class="overlay">
+      <div class="overlay-box event-box">
+        <h2><Icon e={$eventView.icon} /> {$eventView.title}</h2>
+        <p class="hint-line">{$eventView.text}</p>
+        {#if $eventView.result}
+          <p class="unlock">{$eventView.result}</p>
+          <button class="skill" on:click={() => void gm?.leaveEvent()}><Icon e="⚔" /> Prossimo incontro</button>
+        {:else}
+          <div class="event-opts">
+            {#each $eventView.options as o, i}
+              <button class="door event-opt" disabled={!!o.blocked} on:click={() => gm?.chooseEventOption(i)}>
+                <span class="label">{o.label}</span>
+                <span class="hint">{o.blocked ?? o.hint}</span>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    </div>
+  {/if}
+
+  <!-- ===== Overlay Premio Élite ===== -->
+  {#if $uiPhase === 'reward'}
+    <div class="overlay">
+      <div class="overlay-box royal">
+        <h2><Icon e="👹" /> Élite sconfitto</h2>
+        <p class="hint-line">Scegli un oggetto: l'altro è perso.</p>
+        <div class="doors">
+          {#each $rewardChoices as r}
+            <button class="door golden" on:click={() => gm?.chooseReward(r.id)}>
+              <span class="icon"><Icon e={r.icon} /></span>
+              <span class="label">{r.name}</span>
+              <span class="hint">{r.description}</span>
+              {#if r.note}<span class="hint warn">{r.note}</span>{/if}
+            </button>
+          {/each}
         </div>
       </div>
     </div>
@@ -835,10 +875,17 @@
   .doors { display: flex; gap: 14px; justify-content: center; }
   .door {
     display: flex; flex-direction: column; align-items: center; gap: 4px;
-    padding: 18px 22px; min-width: 170px; cursor: pointer; font-family: inherit;
+    padding: 18px 18px; width: 220px; text-align: center; cursor: pointer; font-family: inherit;
     background: #1f3d2a; border: 1px solid #4cc94c; border-radius: 10px; color: #e8e8f0;
   }
   .door .icon { font-size: 28px; }
+  .door .hint { font-size: 12px; opacity: 0.85; line-height: 1.3; }
+  .door.elite { border-color: #ff6b5a; }
+  .door .hint.warn { color: #ffb454; }
+  .event-box { max-width: 560px; }
+  .event-opts { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+  .event-opt { width: 100%; padding: 12px 16px; }
+  .door:disabled { opacity: 0.45; cursor: not-allowed; }
   .door .label { font-weight: bold; }
   .door .hint { font-size: 10px; opacity: 0.75; }
   .door.golden { background: #3d3016; border-color: #ffd84c; }

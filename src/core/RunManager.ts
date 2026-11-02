@@ -23,6 +23,10 @@ export const CHAMPION_STAT_MULTIPLIER = 1.5; // TUNING: 1.8 -> 1.7 -> 1.5
  *  circa x3.2 di difficoltà reale (HP x1.8 e colpi x1.8 sul giocatore). */
 export const BOSS_HP_MULTIPLIER = 1.5; // TUNING: 2.5 -> 2.2 -> 1.8 -> 1.5
 export const BOSS_STR_MULTIPLIER = 1.3; // TUNING: 1.8 -> 1.3
+/** Élite scelta al bivio: nemico forte, premio in oro e un oggetto raro */
+export const ELITE_HP_MULT = 1.8;
+export const ELITE_STR_MULT = 1.4;
+export const ELITE_GOLD_MULT = 1.5;
 
 export interface RunState {
   act: number;       // 1..TOTAL_ACTS
@@ -31,6 +35,10 @@ export interface RunState {
   purchases: number; // acquisti effettuati (inasprisce i costi shop)
   /** HP del goblin come frazione del massimo, portati da un incontro all'altro */
   hpRatio: number;
+  /** il prossimo incontro (o quello in corso) è un'Élite scelta al bivio */
+  elite?: boolean;
+  /** Élite affrontati nell'Atto in corso (tetto per Atto) */
+  elitesInAct?: number;
 }
 
 export type AdvanceResult = 'next-encounter' | 'act-completed' | 'run-completed';
@@ -70,12 +78,17 @@ export class RunManager {
     return this.isBossFight && !this.isActBoss;
   }
 
+  /** Incontro Élite: scelto al bivio, mai su Campione e Boss */
+  public get isElite(): boolean {
+    return !!this.state.elite && !this.isBossFight;
+  }
+
   public get label(): string {
     const enc = this.isActBoss
       ? '👑 BOSS'
       : this.isChampion
         ? '🏆 CAMPIONE'
-        : `${this.state.encounter}/10`;
+        : this.isElite ? `${this.state.encounter}/10 👹` : `${this.state.encounter}/10`;
     return `Atto ${this.state.act} — ${enc}`;
   }
 
@@ -89,6 +102,7 @@ export class RunManager {
     const base = new Decimal(BALANCE.GOLD_REWARD_BASE).times(growth);
     if (this.isActBoss) return base.times(BOSS_GOLD_MULTIPLIER);
     if (this.isChampion) return base.times(CHAMPION_GOLD_MULTIPLIER);
+    if (this.isElite) return base.times(ELITE_GOLD_MULT);
     return base;
   }
 
@@ -124,10 +138,12 @@ export class RunManager {
    *  l'Atto (o l'intera run al terzo); il Campione (5°) prosegue
    *  normalmente al 6° incontro. */
   public advance(): AdvanceResult {
+    this.state.elite = false;
     if (this.isActBoss) {
       if (this.state.act >= TOTAL_ACTS) return 'run-completed';
       this.state.act++;
       this.state.encounter = 1;
+      this.state.elitesInAct = 0;
       return 'act-completed';
     }
     this.state.encounter++;

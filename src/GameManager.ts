@@ -13,6 +13,7 @@ import {
 import {
   BALANCE,
   BattleState,
+  defaultRNG,
   CombatantStats,
   DieFace,
   EnemyIntent,
@@ -53,6 +54,9 @@ import {
   skillHints,
   shopSpecial,
   crossroadSpecial,
+  doors,
+  eventView,
+  rewardChoices,
   forgeSpecial,
   forgeOpsLeft,
   forgeVersion,
@@ -76,6 +80,7 @@ import {
   RunSummaryView
 } from './ui/stores';
 import { ACT_BOSSES, CLASS_SPRITES } from './ui/spriteCatalog';
+import { DoorKind, DOOR_META, REST_HEAL, ELITE_HP_MULT, ELITE_STR_MULT, pickDoors, pickEvent, pickEliteRewards, weakestSlot, EventDef } from '@core/crossroad';
 import { enemyProfileFor, EnemyProfile } from './core/enemies';
 import { sfx } from './audio';
 
@@ -332,8 +337,8 @@ export class GameManager {
        Boss fight ogni 5 incontri: Campione (5°) x1.8, Boss (10°) x2.5. */
     const hpGrowth = new Decimal(BALANCE.ENEMY_HP_GROWTH).pow(level);
     const strGrowth = new Decimal(BALANCE.ENEMY_STR_GROWTH).pow(level);
-    const hpMult = this.run.isActBoss ? BOSS_HP_MULTIPLIER : this.run.isChampion ? CHAMPION_STAT_MULTIPLIER : 1;
-    const strMult = this.run.isActBoss ? BOSS_STR_MULTIPLIER : this.run.isChampion ? CHAMPION_STAT_MULTIPLIER : 1;
+    const hpMult = this.run.isActBoss ? BOSS_HP_MULTIPLIER : this.run.isChampion ? CHAMPION_STAT_MULTIPLIER : this.run.isElite ? ELITE_HP_MULT : 1;
+    const strMult = this.run.isActBoss ? BOSS_STR_MULTIPLIER : this.run.isChampion ? CHAMPION_STAT_MULTIPLIER : this.run.isElite ? ELITE_STR_MULT : 1;
     const enemyStats: CombatantStats = {
       str: new Decimal(BALANCE.ENEMY_BASE_STR).times(strGrowth).times(strMult),
       int: new Decimal(1).times(strGrowth).times(strMult),
@@ -342,7 +347,7 @@ export class GameManager {
     };
 
     this.engine = new BattleEngine(this.playerStats, enemyStats, this.bag);
-    this.enemyProfile = enemyProfileFor(this.run.state.act, this.run.state.encounter, this.run.isChampion, this.run.isActBoss);
+    this.enemyProfile = enemyProfileFor(this.run.state.act, this.run.state.encounter, this.run.isChampion, this.run.isActBoss, this.run.isElite);
     this.engine.enemyPattern = this.enemyProfile.pattern;
     this.engine.bossRules = this.enemyProfile.rules;
     bossRuleText.set(this.enemyProfile.rules?.text ?? '');
@@ -356,6 +361,7 @@ export class GameManager {
         ? `— 👑 ${this.run.label}: il BOSS sbarra la strada! —`
         : this.run.isChampion
           ? `— 🏆 ${this.run.label}: il Campione ti sfida! —`
+          : this.run.isElite ? `— 👹 ${this.run.label}: ${this.enemyName} ti aspetta! —`
           : `— ${this.run.label}: ${this.enemyName} si avvicina —`
     );
   }
@@ -375,6 +381,11 @@ export class GameManager {
     if (this.run.isChampion) {
       this.enemyName = `Campione — ${cls.name}`;
       enemyInfo.set({ name: `Campione — ${cls.name}`, sprite: cls.sprite, tint: 'champion', tier: 'champion', hue: 0 });
+      return;
+    }
+    if (this.run.isElite) {
+      this.enemyName = `Élite — ${cls.name}`;
+      enemyInfo.set({ name: this.enemyName, sprite: cls.sprite, tint: 'champion', tier: 'champion', hue: 0 });
       return;
     }
     // variante cromatica per incontro: stessa sprite, aspetto diverso
@@ -643,6 +654,7 @@ export class GameManager {
     this.log.add('result', wasBossFight ? 'Riposo: HP al massimo' : `Recupero ${Math.round(BALANCE.HEAL_PER_WIN * 100)}% HP → ${Math.round(this.run.state.hpRatio * 100)}%`);
     const wasChampion = this.run.isChampion;
     const wasActBoss = this.run.isActBoss;
+    const wasElite = this.run.isElite;
     const beatenAct = this.run.state.act;
     const result = this.run.advance();
 
@@ -676,8 +688,11 @@ export class GameManager {
       // in sequenza — Mercante Reale, poi Gran Forgia
       this.grandForgeQueued = true;
       this.openShop(true);
+    } else if (wasElite) {
+      // Premio dell'Élite: un oggetto raro a scelta, poi il bivio
+      this.openReward();
     } else {
-      // Bivio (specs §7): due porte, se ne sceglie UNA.
+      // Bivio: due porte diverse, se ne sceglie UNA.
       // Dorate dopo il Campione (§7.bis).
       this.openCrossroad(wasChampion);
     }
@@ -688,15 +703,146 @@ export class GameManager {
   private openCrossroad(special: boolean): void {
     this.intermissionSpecial = special;
     crossroadSpecial.set(special);
+    let kinds: DoorKind[];
+    if (special) {
+      kinds = ['shop', 'forge'];
+      doors.set([
+        { kind: 'shop', icon: '👑', label: 'Mercante Reale', hint: 'Sconto 30% e offerta premium' },
+        { kind: 'forge', icon: '🔨', label: 'Gran Forgia', hint: '3 operazioni, Trasmutazione -50%' }
+      ]);
+    } else {
+      kinds = pickDoors(defaultRNG, this.run.isBossFight, this.run.state.hpRatio, this.run.state.elitesInAct ?? 0);
+      doors.set(kinds.map(k => ({ kind: k, ...DOOR_META[k] })));
+    }
+    this.log.add('note', `Bivio${special ? ' dorato' : ''}: ${kinds.map(k => DOOR_META[k].label).join(' / ')}`);
     this.refreshRunHeader();
     uiPhase.set('crossroad');
   }
 
-  /** Scelta della porta: la porta non scelta si chiude. */
-  public chooseDoor(door: 'shop' | 'forge'): void {
-    this.log.add('note', `Bivio${this.intermissionSpecial ? ' dorato' : ''}: sceglie ${door === 'shop' ? 'il Mercante' : 'la Forgia'}`);
-    if (door === 'shop') this.openShop(this.intermissionSpecial);
-    else this.openForge(this.intermissionSpecial);
+  /** Scelta della porta: l'altra si chiude. */
+  public chooseDoor(door: DoorKind): void {
+    sfx.click();
+    this.log.add('note', `Bivio${this.intermissionSpecial ? ' dorato' : ''}: sceglie ${DOOR_META[door].label}`);
+    switch (door) {
+      case 'shop': this.openShop(this.intermissionSpecial); break;
+      case 'forge': this.openForge(this.intermissionSpecial); break;
+      case 'rest': {
+        const before = this.run.state.hpRatio;
+        this.run.state.hpRatio = Math.min(1, before + REST_HEAL);
+        pushLog(`🏕️ Riposo: HP ${Math.round(before * 100)}% → ${Math.round(this.run.state.hpRatio * 100)}%`);
+        this.log.add('result', `Riposo: HP ${Math.round(before * 100)}% → ${Math.round(this.run.state.hpRatio * 100)}%`);
+        this.autosave();
+        void this.nextFight();
+        break;
+      }
+      case 'elite':
+        this.run.state.elite = true;
+        this.run.state.elitesInAct = (this.run.state.elitesInAct ?? 0) + 1;
+        this.log.add('result', 'Sfida Élite accettata: il prossimo incontro è un Élite');
+        this.autosave();
+        void this.nextFight();
+        break;
+      case 'event':
+        this.openEvent();
+        break;
+    }
+  }
+
+  private nextFight(): Promise<void> {
+    rewardBanner.set(null);
+    this.newBattle(this.run.level);
+    return this.start();
+  }
+
+  /* ---------------- Eventi ---------------- */
+
+  private seenEvents: string[] = [];
+  private currentEvent: EventDef | null = null;
+
+  private eventCtx() {
+    return { run: this.run, stats: this.playerStats, bag: this.bag, equipment: this.equipment, rng: defaultRNG };
+  }
+
+  private openEvent(): void {
+    const ev = pickEvent(defaultRNG, this.seenEvents);
+    this.seenEvents.push(ev.id);
+    this.currentEvent = ev;
+    this.log.add('note', `Evento: ${ev.title}`);
+    this.publishEvent(null);
+    uiPhase.set('event');
+  }
+
+  private publishEvent(result: string | null): void {
+    const ev = this.currentEvent;
+    if (!ev) { eventView.set(null); return; }
+    const c = this.eventCtx();
+    eventView.set({
+      icon: ev.icon, title: ev.title, text: ev.text, result,
+      options: ev.options.map(o => ({ label: o.label, hint: o.hint, blocked: o.blocked ? o.blocked(c) : null }))
+    });
+  }
+
+  public chooseEventOption(i: number): void {
+    const ev = this.currentEvent;
+    const opt = ev?.options[i];
+    if (!ev || !opt) return;
+    const c = this.eventCtx();
+    if (opt.blocked?.(c)) { sfx.denied(); return; }
+    sfx.click();
+    const text = opt.apply(c);
+    this.log.add('result', `Evento ${ev.title} → ${opt.label}: ${text}`);
+    pushLog(`${ev.icon} ${text}`);
+    equipVersion.update(v => v + 1);
+    this.syncEquipment();
+    this.refreshRunHeader();
+    this.autosave();
+    this.persistLog();
+    this.currentEvent = null;
+    eventView.set({ icon: ev.icon, title: ev.title, text: ev.text, options: [], result: text });
+  }
+
+  public leaveEvent(): Promise<void> {
+    eventView.set(null);
+    return this.nextFight();
+  }
+
+  /* ---------------- Premio dell'Élite ---------------- */
+
+  private rewardItems: EquipmentItem[] = [];
+
+  private openReward(): void {
+    this.rewardItems = pickEliteRewards(defaultRNG, this.equipment.ownedIds);
+    if (this.rewardItems.length === 0) { this.openCrossroad(false); return; }
+    const full = this.equipment.freeSlots === 0;
+    const weak = full ? this.equipment.slots[weakestSlot(this.equipment)] : null;
+    rewardChoices.set(this.rewardItems.map(it => ({
+      id: it.id, icon: it.icon, name: it.name, description: it.description, rarity: it.rarity,
+      note: full && weak ? `Sostituisce ${weak.name}` : ''
+    })));
+    this.log.add('result', `Premio Élite: ${this.rewardItems.map(i => i.name).join(' / ')}`);
+    this.autosave();
+    uiPhase.set('reward');
+  }
+
+  public chooseReward(id: string): void {
+    const it = this.rewardItems.find(i => i.id === id);
+    if (!it) return;
+    sfx.coin();
+    if (this.equipment.freeSlots === 0) {
+      const idx = weakestSlot(this.equipment);
+      const old = this.equipment.unequip(idx);
+      if (old) this.log.add('result', `Sostituito: ${old.name}`);
+    }
+    this.equipment.equip(it);
+    this.syncEquipment();
+    equipVersion.update(v => v + 1);
+    pushLog(`${it.icon} Premio Élite: ${it.name}`);
+    this.log.add('result', `Scelto: ${it.name}`);
+    this.rewardItems = [];
+    rewardChoices.set([]);
+    this.autosave();
+    this.persistLog();
+    this.openCrossroad(false);
   }
 
   private toChip(face: DieFace): DieChip {

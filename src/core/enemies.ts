@@ -1,4 +1,5 @@
 import { IntentType } from './types';
+import { eliteRule } from './crossroad';
 
 /* ============================================================
  * Enemies — Schemi fissi e regole dei boss
@@ -129,7 +130,7 @@ export function classIndexFor(act: number, encounter: number): number {
 }
 
 export function enemyProfileFor(
-  act: number, encounter: number, isChampion: boolean, isActBoss: boolean
+  act: number, encounter: number, isChampion: boolean, isActBoss: boolean, isElite = false
 ): EnemyProfile {
   if (isActBoss) {
     const name = BOSS_ORDER[(act - 1) % BOSS_ORDER.length]!;
@@ -137,5 +138,6 @@ export function enemyProfileFor(
     return { name, pattern: p.pattern, rules: p.rules };
   }
   const cls = CLASS_ORDER[classIndexFor(act, encounter)]!;
+  if (isElite) return { name: `Élite — ${cls}`, pattern: CLASS_PATTERNS[cls], rules: eliteRule(act, encounter) };
   return { name: isChampion ? `Campione — ${cls}` : cls, pattern: CLASS_PATTERNS[cls], rules: null };
 }

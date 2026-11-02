@@ -92,7 +92,7 @@ const owned = Object.entries(out.esperto!.itemShare).sort((a, b) => b[1] - a[1])
 const never = ITEMS.map(i => i.id).filter(id => !(id in out.esperto!.itemShare) && !(id in out.medio!.itemShare));
 L.push(`Oggetti più presi (esperto): ${owned.slice(0, 4).map(([id, v]) => `${id} ${pct(v)}`).join(' · ')}`);
 L.push(`Mai presi (${never.length}): ${never.join(', ') || '—'}`);
-L.push(`Oro avanzato a fine run: esperto ${Math.round(out.esperto!.goldLeft)}, medio ${Math.round(out.medio!.goldLeft)}`);
+L.push(`Oro a fine run (guadagnato dopo l ultimo negozio, non speso per scelta): esperto ${Math.round(out.esperto!.goldLeft)}, medio ${Math.round(out.medio!.goldLeft)}`);
 
 const warn: string[] = [];
 const E = out.esperto!, M = out.medio!, N = out.ingenuo!;

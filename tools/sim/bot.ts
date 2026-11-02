@@ -2,10 +2,11 @@ import Decimal from 'break_infinity.js';
 import { enemyProfileFor } from '../../src/core/enemies';
 import { GoblinDie } from '../../src/core/GoblinDie';
 import { POTION_HEAL } from '../../src/core/Shop';
-import { RunManager, CHAMPION_STAT_MULTIPLIER, BOSS_HP_MULTIPLIER, BOSS_STR_MULTIPLIER } from '../../src/core/RunManager';
+import { RunManager, CHAMPION_STAT_MULTIPLIER, BOSS_HP_MULTIPLIER, BOSS_STR_MULTIPLIER, ELITE_HP_MULT, ELITE_STR_MULT } from '../../src/core/RunManager';
 import { Forge } from '../../src/core/Forge';
 import { BattleEngine } from '../../src/core/BattleEngine';
 import { Shop } from '../../src/core/Shop';
+import { DoorKind, REST_HEAL, pickDoors, pickEvent, pickEliteRewards, weakestSlot } from '../../src/core/crossroad';
 import { EquipmentManager, findItem } from '../../src/core/equipment';
 import { BALANCE, BattleState, FaceType, IntentType, Rarity, SkillId, seededRNG } from '../../src/core/types';
 import { SKILLS } from '../../src/core/skills';
@@ -39,7 +40,7 @@ export interface FightLog {
   used: Record<number, number>;
 }
 
-export interface RunResult { diedAt: number; log: FightLog[]; items: string[]; gold: number }
+export interface RunResult { diedAt: number; log: FightLog[]; items: string[]; gold: number; doors?: Record<string, number> }
 
 function makeBag(rng: ReturnType<typeof seededRNG>): GoblinDie[] {
   const special = [
@@ -67,8 +68,8 @@ async function fight(
   hpRatio: number, seed: number, policy: BotOptions['policy']
 ) {
   const L = run.level;
-  const hpM = run.isActBoss ? BOSS_HP_MULTIPLIER : run.isChampion ? CHAMPION_STAT_MULTIPLIER : 1;
-  const strM = run.isActBoss ? BOSS_STR_MULTIPLIER : run.isChampion ? CHAMPION_STAT_MULTIPLIER : 1;
+  const hpM = run.isActBoss ? BOSS_HP_MULTIPLIER : run.isChampion ? CHAMPION_STAT_MULTIPLIER : run.isElite ? ELITE_HP_MULT : 1;
+  const strM = run.isActBoss ? BOSS_STR_MULTIPLIER : run.isChampion ? CHAMPION_STAT_MULTIPLIER : run.isElite ? ELITE_STR_MULT : 1;
   const hpG = new Decimal(BALANCE.ENEMY_HP_GROWTH).pow(L), strG = new Decimal(BALANCE.ENEMY_STR_GROWTH).pow(L);
   const enemy = {
     str: new Decimal(BALANCE.ENEMY_BASE_STR).times(strG).times(strM),
@@ -77,7 +78,7 @@ async function fight(
     lck: 0
   };
   const eng = new BattleEngine(stats, enemy, bag, seededRNG(seed));
-  const prof = enemyProfileFor(run.state.act, run.state.encounter, run.isChampion, run.isActBoss);
+  const prof = enemyProfileFor(run.state.act, run.state.encounter, run.isChampion, run.isActBoss, run.isElite);
   eng.enemyPattern = prof.pattern; eng.bossRules = prof.rules;
   eq.syncPipeline(eng.pipeline, () => eng.itemCtx());
   eng.mods = eq.mods();
@@ -186,7 +187,7 @@ function shopVisit(shop: Shop, stats: any, bag: GoblinDie[], eq: EquipmentManage
     if (o.kind === 'potion' || o.kind === 'elixir') return 20; // le cure prima, ma solo se servono (vedi sotto)
     return 1;
   };
-  for (let round = 0; round < 4; round++) {
+  for (let round = 0; round < 60; round++) {
     offers.sort((a, b) => rank(b) - rank(a));
     for (const o of offers) {
       if (run.state.gold.lt(o.cost)) continue;
@@ -230,6 +231,8 @@ export async function simulateRun(seed: number, opts: BotOptions): Promise<RunRe
   const shop = new Shop(seededRNG(seed * 31));
   const eq = new EquipmentManager();
   let forgeNext = false;
+  const seen: string[] = [];
+  const doors: Record<string, number> = { shop: 0, forge: 0, rest: 0, elite: 0, event: 0 };
   const log: FightLog[] = [];
 
   for (let e = 0; e < 30; e++) {
@@ -241,20 +244,63 @@ export async function simulateRun(seed: number, opts: BotOptions): Promise<RunRe
       level: L, turns: r.turns, hpLost: r.hpLost, damage: r.damage, enemyHp: r.enemyHp,
       str: stats.str.toNumber(), vit: stats.vit.toNumber(), items: eq.ownedIds.length, used: r.used
     });
-    if (!r.won) return { diedAt: L, log, items: [...eq.ownedIds], gold: run.state.gold.toNumber() };
+    if (!r.won) return { diedAt: L, log, items: [...eq.ownedIds], gold: run.state.gold.toNumber(), doors };
     run.state.hpRatio = special ? 1 : Math.min(1, Math.max(0.05, r.hpRatio) + BALANCE.HEAL_PER_WIN);
+    const wasElite = run.isElite;
+    const wasChampion = run.isChampion;
+    const wasActBoss = run.isActBoss;
     run.addGold(run.goldReward());
     run.applyInterest();
     stats.str = stats.str.times(BALANCE.WIN_STR_GROWTH);
     stats.vit = stats.vit.times(BALANCE.WIN_VIT_GROWTH);
     run.advance();
-    const visitShop = special || !forgeNext;
-    const visitForge = special || forgeNext;
-    forgeNext = !forgeNext;
-    if (visitForge && !NOSHOP) forgeVisit(forge, bag, run, special);
-    if (visitShop && !NOSHOP) shopVisit(shop, stats, bag, eq, run, special);
+    if (wasElite) {
+      doors.elite = (doors.elite ?? 0) + 1;
+      const picks = pickEliteRewards(rng, eq.ownedIds);
+      if (picks.length > 0) {
+        const best = picks.sort((a, b) => RARITY_ORDER[b.rarity]! - RARITY_ORDER[a.rarity]!)[0]!;
+        if (eq.freeSlots === 0) eq.unequip(weakestSlot(eq));
+        eq.equip(best);
+      }
+    }
+    if (NOSHOP) continue;
+    if (wasActBoss) {
+      forgeVisit(forge, bag, run, true);
+      shopVisit(shop, stats, bag, eq, run, true);
+      continue;
+    }
+    if (wasChampion) {
+      if (forgeNext) forgeVisit(forge, bag, run, true); else shopVisit(shop, stats, bag, eq, run, true);
+      forgeNext = !forgeNext;
+      continue;
+    }
+    const kinds = pickDoors(rng, run.isBossFight, run.state.hpRatio, run.state.elitesInAct ?? 0);
+    const hp = run.state.hpRatio;
+    const score = (k: DoorKind): number => {
+      if (opts.policy === 'naive') return k === kinds[0] ? 1 : 0;
+      if (k === 'shop') return forgeNext ? 2 : 3;
+      if (k === 'forge') return forgeNext ? 3 : 2;
+      if (k === 'rest') return hp < 0.55 ? 4 : 0.5;
+      if (k === 'elite') return (globalThis as any).process?.env?.SIM_NOELITE ? -1 : hp >= 0.75 ? 3.5 : 0;
+      return (globalThis as any).process?.env?.SIM_NOEVENT ? -1 : 2.5; // event
+    };
+    const door = [...kinds].sort((a, b) => score(b) - score(a))[0]!;
+    doors[door] = (doors[door] ?? 0) + 1;
+    if (door === 'shop') { shopVisit(shop, stats, bag, eq, run, false); forgeNext = true; }
+    else if (door === 'forge') { forgeVisit(forge, bag, run, false); forgeNext = false; }
+    else if (door === 'rest') run.state.hpRatio = Math.min(1, hp + REST_HEAL);
+    else if (door === 'elite') { run.state.elite = true; run.state.elitesInAct = (run.state.elitesInAct ?? 0) + 1; }
+    else {
+      const ev = pickEvent(rng, seen);
+      seen.push(ev.id);
+      const c = { run, stats, bag, equipment: eq, rng };
+      const free = ev.options.filter(o => !o.blocked?.(c));
+      const okRisk = hp > 0.6;
+      const opt = (okRisk ? free[0] : free[free.length - 1]) ?? free[free.length - 1];
+      opt?.apply(c);
+    }
   }
-  return { diedAt: 30, log, items: [...eq.ownedIds], gold: run.state.gold.toNumber() };
+  return { diedAt: 30, log, items: [...eq.ownedIds], gold: run.state.gold.toNumber(), doors };
 }
 
 export interface BalanceReport {
