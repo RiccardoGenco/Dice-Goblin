@@ -682,6 +682,20 @@ export class GameManager {
   }
 
   /** Lancio nel registro: facce, effetti e reazioni */
+  /** Riga "Effetti pronti" dello stato attuale (anche dopo un rilancio) */
+  private logEffectsLine(always = false): void {
+    const e = this.engine;
+    const ef = e.getEffects();
+    const fx = [
+      ef.poison.gt(0) ? `☠${formatBigNumber(ef.poison)}` : '',
+      ef.shield.gt(0) ? `🛡${formatBigNumber(ef.shield)}` : '',
+      ef.fire.gt(0) ? `🔥${formatBigNumber(ef.fire)}` : ''
+    ].filter(Boolean).join(' ');
+    if (always || fx || ef.reactions.length) {
+      this.log.add('roll', `Effetti pronti: ${fx || '—'}${ef.reactions.length ? ` · reazioni: ${ef.reactions.map(r => r.name).join(', ')}` : ''}`);
+    }
+  }
+
   private logRoll(faces: DieFace[]): void {
     const e = this.engine;
     const ef = e.getEffects();
@@ -727,6 +741,7 @@ export class GameManager {
     if (!this.engine.rerollSelected(indices)) return;
     this.log.stats.rerollsUsed++;
     this.log.add('reroll', `Rilancio: ${old.map(o => `#${o.i + 1} ${o.f} → ${faceLabel(this.lastFaces[o.i]!)}`).join(', ')} (restano ${this.engine.rerolls}) · ora ${this.lastFaces.length} facce`);
+    this.logEffectsLine(true);
     const chosen = new Set(indices);
     const keep = new Set<number>();
     for (let i = 0; i < before; i++) if (!chosen.has(i)) keep.add(i);
