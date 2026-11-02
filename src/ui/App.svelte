@@ -270,7 +270,7 @@
       {#if $chainView && $battleState === BattleState.WAIT_PLAYER_ACTION}
         <div class="formula" class:hot={$chainView.tier >= 2}>
           {#if $chainView.multCount > 0}<span class="f-mult">×{$chainView.mult}</span>{/if}
-          <span class="f-pow"><small>Potenza</small> <b>{$chainView.power}</b></span>
+          <span class="f-pow"><small>Potenza</small> <b class="num">{$chainView.power}</b></span>
         </div>
       {/if}
       <button class="reroll" disabled={!canReroll || selectedChips.length === 0} on:click={doReroll}
@@ -535,6 +535,14 @@
 </main>
 
 <style>
+  /* Nel font pixel il 5 sembra una S e il 2 si legge male: cifre e simboli numerici
+     vengono presi da un font di sistema leggibile, le parole restano in pixel. */
+  @font-face {
+    font-family: 'Cifre Nitide';
+    src: local('DejaVu Sans Mono'), local('Menlo'), local('Consolas'), local('Roboto Mono'), local('Courier New');
+    unicode-range: U+0030-0039, U+0025, U+002B, U+002D, U+002E, U+002F, U+00D7;
+  }
+
   /* ============================================================
    * Schermata di gioco: una sola vista a tutta altezza, niente scroll.
    *   topbar  → progresso run, relitti equipaggiati, oro
@@ -543,12 +551,12 @@
    *   dock    → la "mano" di 4 skill (tasti 1-4) + zaino
    * ============================================================ */
   .game {
-    --ink: #ece8f6; --muted: #9a93b3; --line: #3a3354; --panel: #17132a;
+    --num: ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace; --ink: #ece8f6; --muted: #9a93b3; --line: #3a3354; --panel: #17132a;
     --pink: #ff5c8a; --gold: #ffd84c; --green: #7dff9b; --cyan: #5cd0ff;
     height: 100%; box-sizing: border-box; max-width: 1400px; margin: 0 auto;
     padding: 8px 12px 10px;
     display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; gap: 8px;
-    font-family: 'Pixelify Sans', ui-monospace, monospace; color: var(--ink);
+    font-family: 'Cifre Nitide', 'Pixelify Sans', ui-monospace, monospace; color: var(--ink);
     font-variant-ligatures: none; font-feature-settings: 'liga' 0, 'clig' 0;
   }
   .mini {
@@ -581,7 +589,7 @@
   }
   .relic.filled { border-style: solid; border-color: #ffb84c; background: #2a2010; }
   .topright { display: flex; justify-content: flex-end; align-items: center; gap: 14px; }
-  .gold { color: var(--gold); font-weight: 700; font-size: 18px; }
+  .gold { font-family: var(--num); color: var(--gold); font-weight: 700; font-size: 18px; }
   .restart {
     font-family: inherit; font-size: 12px; padding: 4px 10px; cursor: pointer; color: var(--muted);
     background: transparent; border: 1px solid var(--line); border-radius: 4px;
@@ -604,9 +612,10 @@
     background: linear-gradient(180deg, #1c1735, #120f24); border: 1px solid var(--line);
   }
   .tray { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
+  .num { font-family: var(--num); }
   .chip {
     border-radius: 6px; padding: 5px 14px; border: 2px solid #4a4268; background: #241f3d; color: var(--ink);
-    font-family: inherit; font-size: 20px; font-weight: 600; min-width: 42px;
+    font-family: var(--num); font-size: 19px; font-weight: 700; min-width: 42px;
     animation: chip-in 0.4s cubic-bezier(.2,1.5,.4,1) both; animation-delay: calc(var(--i) * 70ms);
   }
   @keyframes chip-in { from { transform: translateY(10px) scale(0.5); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -648,7 +657,7 @@
   .key { position: absolute; top: 6px; left: 8px; }
   .c-icon { font-size: 34px; line-height: 1; }
   .c-name { font-size: 15px; font-weight: 700; text-align: center; }
-  .c-preview { font-size: 22px; font-weight: 700; color: var(--gold); text-align: center; min-height: 28px; }
+  .c-preview { font-family: var(--num); font-size: 20px; font-weight: 700; color: var(--gold); text-align: center; min-height: 28px; }
   .c-hint { font-size: 12px; color: #c9b8e8; opacity: 0.85; text-align: center; }
   /* ---- Schermi stretti (telefono in verticale) ---- */
   @media (max-width: 760px) {

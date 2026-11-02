@@ -258,7 +258,7 @@
   .fill { height: 100%; transition: width 0.45s ease; }
   .efill { background: linear-gradient(90deg, #ff5c5c, #ff9b5c); }
   .pfill { background: linear-gradient(90deg, #4cc94c, #7dff9b); }
-  .nums { font-size: calc(12px * var(--ui)); opacity: 0.85; text-align: right; text-shadow: 0 1px 2px #000; }
+  .nums { font-family: ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace; font-size: calc(12px * var(--ui)); opacity: 0.85; text-align: right; text-shadow: 0 1px 2px #000; }
 
   .bubble {
     position: relative; z-index: 3; margin-bottom: 6px; padding: 3px 12px;
