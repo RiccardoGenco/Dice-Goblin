@@ -112,9 +112,9 @@
 
   const SKILL_ORDER: { id: SkillId; icon: string; hint: string }[] = [
     { id: SkillId.SGANCIO_BRUTALE, icon: '💥', hint: 'Danno ×1.5' },
-    { id: SkillId.SCUDO_GOBLIN,    icon: '🛡️', hint: 'Danno → Scudo' },
-    { id: SkillId.SPUTO_ACIDO,     icon: '☠️', hint: '20% Veleno ×3 turni' },
-    { id: SkillId.TIRO_TRUCCATO,   icon: '🎲', hint: '×0.5, tieni i rilanci' }
+    { id: SkillId.PARATA,          icon: '🛡️', hint: 'Scudo; se attacca, rimbalza 50%' },
+    { id: SkillId.BAVA,            icon: '☠️', hint: '60% Veleno ×3, ignora scudo' },
+    { id: SkillId.CARICA,          icon: '⚡', hint: 'Salta il turno: tieni le facce, poi ×1.5' }
   ];
 
   $: canAct = $battleState === BattleState.WAIT_PLAYER_ACTION && !$diceBusy && !$battleResult;

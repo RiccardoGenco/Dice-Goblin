@@ -251,17 +251,16 @@ export class GameManager {
 
     const fmt = formatBigNumber;
     const sgancio = calc(SKILLS[SkillId.SGANCIO_BRUTALE].skillMod);
-    const scudo = calc(SKILLS[SkillId.SCUDO_GOBLIN].skillMod);
-    const sputoBase = calc(SKILLS[SkillId.SPUTO_ACIDO].skillMod);
-    const sputo = SKILLS[SkillId.SPUTO_ACIDO];
-    const veleno = sputoBase.times(sputo.poisonRatio ?? 0).times(Decimal.max(this.engine.player.stats.int, 1));
-    const truccato = calc(SKILLS[SkillId.TIRO_TRUCCATO].skillMod);
+    const parata = calc(SKILLS[SkillId.PARATA].skillMod);
+    const bavaDef = SKILLS[SkillId.BAVA];
+    const bavaBase = calc(bavaDef.skillMod);
+    const bava = bavaBase.times(bavaDef.poisonRatio ?? 0).times(Decimal.max(this.engine.player.stats.int, 1));
 
     skillPreview.set({
       [SkillId.SGANCIO_BRUTALE]: `${fmt(sgancio)} danni`,
-      [SkillId.SCUDO_GOBLIN]: `+${fmt(scudo)} scudo`,
-      [SkillId.SPUTO_ACIDO]: `${fmt(sputoBase)} + ☠${fmt(veleno)}×${sputo.poisonTurns}`,
-      [SkillId.TIRO_TRUCCATO]: `${fmt(truccato)} danni`
+      [SkillId.PARATA]: `+${fmt(parata)} scudo`,
+      [SkillId.BAVA]: `☠${fmt(bava)}×${bavaDef.poisonTurns}`,
+      [SkillId.CARICA]: `tieni ${faces.length} facce`
     });
 
     const s = summarizeChain(faces);
@@ -334,6 +333,7 @@ export class GameManager {
       rolledChips.set(faces.map(f => this.toChip(f)));
       rollNonce.update(n => n + 1);
       this.refreshPreview();
+      if (this.engine.charged) pushLog(`⚡ Carica pronta: le facce tenute valgono ×1.5`);
       // ← Il Visual Blocking Callback: la logica attende il 3D;
       // quando i dadi si fermano, il palco annuncia il moltiplicatore.
       p.waitUntilFinished = async () => {
@@ -358,8 +358,19 @@ export class GameManager {
 
     e.on('onShieldGained', p => {
       emitFx('player', 'shield', `+${formatBigNumber(p.amount as Decimal)}`, magnitudeOf(p.amount as Decimal));
-      pushLog(`🛡️ Scudo del Goblin: ${formatBigNumber(p.amount as Decimal)} punti`);
+      pushLog(`🛡️ Scudo: ${formatBigNumber(p.amount as Decimal)} punti`);
       this.refreshCombatants();
+    });
+
+    e.on('onReflect', p => {
+      emitFx('enemy', 'hit', `↩ ${formatBigNumber(p.amount as Decimal)}`, magnitudeOf(p.amount as Decimal));
+      pushLog(`↩️ Parata: ${formatBigNumber(p.amount as Decimal)} danni rimbalzati`);
+      this.refreshCombatants();
+    });
+
+    e.on('onCharge', p => {
+      emitFx('player', 'shield', `⚡ ${p.count as number} facce`, 2);
+      pushLog(`⚡ Carica: ${p.count as number} facce restano per il prossimo turno`);
     });
 
     e.on('onReaction', p => {

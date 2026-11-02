@@ -39,7 +39,7 @@ describe('Effetti delle facce', () => {
     const engine = new BattleEngine(mk(0), mk(1, 1e9), bag, seededRNG(1));
     await engine.initTurn();
     const hp0 = engine.enemy.hp;
-    await engine.resolvePlayerAction(SkillId.SCUDO_GOBLIN); // il danno delle facce diventa scudo
+    await engine.resolvePlayerAction(SkillId.PARATA); // il danno delle facce diventa scudo
     // fuoco: 3 x2 = 6 diretto; vapori: tick del veleno (5); scudo ardente: 4
     expect(hp0.minus(engine.enemy.hp).toNumber()).toBeGreaterThanOrEqual(6 + 5 + 4);
     expect(engine.enemy.poison.perTurn.toNumber()).toBe(5);

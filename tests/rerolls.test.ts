@@ -57,16 +57,7 @@ describe('Rilanci gratuiti', () => {
     expect(engine.player.stats.str.toNumber()).toBe(15);
   });
 
-  it('Tiro Truccato mette da parte i rilanci non usati per il turno dopo', async () => {
-    const engine = new BattleEngine(mk(), mk(10, 1e9), bag(), seededRNG(6));
-    await engine.initTurn();
-    expect(engine.rerolls).toBe(2);
-    await engine.resolvePlayerAction(SkillId.TIRO_TRUCCATO); // nessun rilancio usato
-    expect(engine.state).toBe(BattleState.WAIT_PLAYER_ACTION); // nuovo turno già pronto
-    expect(engine.rerolls).toBe(Math.min(BALANCE.MAX_REROLLS, BALANCE.REROLLS_PER_TURN * 2));
-  });
-
-  it('un attacco normale non conserva i rilanci', async () => {
+  it('i rilanci si ricaricano ogni turno', async () => {
     const engine = new BattleEngine(mk(), mk(10, 1e9), bag(), seededRNG(6));
     await engine.initTurn();
     await engine.resolvePlayerAction(SkillId.SGANCIO_BRUTALE);

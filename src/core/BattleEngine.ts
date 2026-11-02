@@ -38,6 +38,8 @@ export type BattleEventName =
   | 'onDamageDealt'
   | 'onShieldGained'
   | 'onPoisonApplied'
+  | 'onReflect' // la Parata rimbalza parte dell'attacco sul nemico
+  | 'onCharge' // Carica: il lancio resta per il turno dopo
   | 'onReaction' // due effetti di facce diverse reagiscono (vapori, spore...)
   | 'onEnemyIntent'
   | 'onEnemyAction'
@@ -93,8 +95,15 @@ export class BattleEngine {
   private listeners = new Map<BattleEventName, Listener[]>();
   private lastRoll: RollResult | null = null;
   private rerollsLeft = 0;
-  /** Rilanci messi da parte da Tiro Truccato per il turno successivo */
-  private bankedRerolls = 0;
+  /** Facce messe da parte da Carica: si aggiungono ai dadi del turno dopo */
+  private carried: { faces: DieFace[]; sources: GoblinDie[]; pending: number } | null = null;
+  /** Rimbalzo attivo della Parata durante la fase nemica */
+  private reflectRatio: Decimal | null = null;
+  /** Il lancio corrente arriva da una Carica: danno ×CHARGE_BONUS */
+  private chargedRoll = false;
+  public get charged(): boolean { return this.chargedRoll; }
+  /** Facce conservate da Carica (per la UI) */
+  public get carriedCount(): number { return this.carried?.faces.length ?? 0; }
   /** Rilanci gratuiti ancora disponibili nel turno */
   public get rerolls(): number { return this.rerollsLeft; }
 
@@ -176,8 +185,7 @@ export class BattleEngine {
       });
     }
 
-    this.rerollsLeft = Math.min(BALANCE.MAX_REROLLS, BALANCE.REROLLS_PER_TURN + this.bankedRerolls);
-    this.bankedRerolls = 0;
+    this.rerollsLeft = BALANCE.REROLLS_PER_TURN;
     await this.setState(BattleState.WAIT_PLAYER_ACTION);
   }
 
@@ -203,6 +211,14 @@ export class BattleEngine {
       baseCount: this.diceBag.length,
       pending: 0
     };
+    // Carica: le facce messe da parte aprono il lancio, poi i dadi della borsa
+    this.chargedRoll = !!this.carried;
+    if (this.carried) {
+      res.faces.push(...this.carried.faces);
+      res.sources.push(...this.carried.sources);
+      res.pending = this.carried.pending;
+      this.carried = null;
+    }
     this.extendChain(res, [...this.diceBag]);
     return res;
   }
@@ -284,6 +300,7 @@ export class BattleEngine {
     if (!r) return new Decimal(0);
     let dmg = this.pipeline.calculateTurnDamage(this.player.stats.str, r.faces, skillMod);
     if (r.overflowed) dmg = dmg.times(r.overflowMultiplier);
+    if (this.chargedRoll) dmg = dmg.times(BALANCE.CHARGE_BONUS);
     return dmg;
   }
 
@@ -298,31 +315,42 @@ export class BattleEngine {
 
     // Pipeline a 3 fasi (FLAT -> MULT -> skillMod) + middleware passivi
     const damage = this.calcDamage(skill.skillMod);
-    if (skill.banksRerolls) this.bankedRerolls = this.rerollsLeft;
+    this.reflectRatio = null;
 
-    if (skill.convertsToShield) {
-      // Scudo del Goblin: il danno diventa Punti Scudo temporanei
-      this.player.shield = this.player.shield.plus(damage);
-      await this.emitEvent('onShieldGained', { amount: damage });
+    if (skill.carriesRoll) {
+      // Carica: nessun attacco e nessun effetto di faccia ora; il lancio resta
+      const r = this.lastRoll;
+      this.carried = { faces: [...r.faces], sources: [...r.sources], pending: r.pending };
+      await this.emitEvent('onCharge', { count: r.faces.length });
     } else {
-      this.applyDamage(this.enemy, damage);
-      await this.emitEvent('onDamageDealt', {
-        target: 'enemy',
-        amount: damage
-        // La UI blocca qui fino a fine effetto d'impatto
-      });
-
+      if (skill.convertsToShield) {
+        // Parata: il danno diventa Punti Scudo temporanei
+        this.player.shield = this.player.shield.plus(damage);
+        this.reflectRatio = skill.reflectRatio;
+        await this.emitEvent('onShieldGained', { amount: damage });
+      }
+      if (skill.dealsDamage) {
+        this.applyDamage(this.enemy, damage);
+        await this.emitEvent('onDamageDealt', {
+          target: 'enemy',
+          amount: damage
+          // La UI blocca qui fino a fine effetto d'impatto
+        });
+      }
       if (skill.poisonRatio) {
-        // Sputo Acido: 20% del danno per 3 turni, scalato da INT
-        const perTurn = damage
+        // Bava: veleno forte che si somma a quello già in corso, scalato da INT
+        const add = damage
           .times(skill.poisonRatio)
           .times(Decimal.max(this.player.stats.int, 1));
-        this.enemy.poison = { perTurn, turnsLeft: skill.poisonTurns };
-        await this.emitEvent('onPoisonApplied', { perTurn, turns: skill.poisonTurns });
+        const active = this.enemy.poison.turnsLeft > 0;
+        const perTurn = active ? this.enemy.poison.perTurn.plus(add) : add;
+        const turns = Math.max(this.enemy.poison.turnsLeft, skill.poisonTurns);
+        this.enemy.poison = { perTurn, turnsLeft: turns };
+        await this.emitEvent('onPoisonApplied', { perTurn: add, turns });
       }
-    }
 
-    await this.applyFaceEffects();
+      await this.applyFaceEffects();
+    }
 
     if (await this.checkBattleEnd()) return;
     await this.enemyPhase();
@@ -370,9 +398,16 @@ export class BattleEngine {
     if (!intent) return;
 
     switch (intent.type) {
-      case IntentType.ATTACK:
+      case IntentType.ATTACK: {
+        const blocked = Decimal.min(this.player.shield, intent.value);
         this.applyDamage(this.player, intent.value);
+        if (this.reflectRatio && blocked.gt(0)) {
+          const back = blocked.times(this.reflectRatio);
+          this.applyDamage(this.enemy, back);
+          await this.emitEvent('onReflect', { amount: back });
+        }
         break;
+      }
       case IntentType.SHIELD:
         this.enemy.shield = this.enemy.shield.plus(intent.value);
         break;
@@ -386,6 +421,7 @@ export class BattleEngine {
         this.enemy.stats.str = this.enemy.stats.str.plus(intent.value);
         break;
     }
+    this.reflectRatio = null;
     await this.emitEvent('onEnemyAction', { intent });
 
     if (await this.checkBattleEnd()) return;

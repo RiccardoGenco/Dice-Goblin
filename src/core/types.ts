@@ -111,10 +111,10 @@ export type DamageMiddleware = (payload: DamagePayload) => DamagePayload;
  * Le 4 skill fisse di classe (MVP Specs §3, Opzione A)
  * ------------------------------------------------------------ */
 export enum SkillId {
-  SGANCIO_BRUTALE, // Attacco:  skillMod 1.5
-  SCUDO_GOBLIN,    // Difesa:   danno -> Punti Scudo
-  SPUTO_ACIDO,     // DoT:      20% del danno come Veleno x3 turni
-  TIRO_TRUCCATO    // Utility:  50% danno, ma i rilanci non usati passano al turno dopo
+  SGANCIO_BRUTALE, // Attacco:  skillMod 1.5, il colpo sicuro
+  PARATA,          // Difesa:   danno -> Scudo; se il nemico attacca, rimbalza il 50% di ciò che blocchi
+  BAVA,            // Veleno:   nessun danno diretto, 60% del danno come Veleno x3 turni (ignora lo scudo)
+  CARICA           // Setup:    non attacchi, le facce restano per il turno dopo
 }
 
 export interface SkillDefinition {
@@ -124,11 +124,15 @@ export interface SkillDefinition {
   skillMod: Decimal;
   /** Converte il danno in scudo invece che infliggerlo */
   convertsToShield: boolean;
+  /** Frazione del danno bloccato dallo scudo che torna al nemico se attacca */
+  reflectRatio: Decimal | null;
   /** Frazione del danno applicata come veleno per `poisonTurns` */
   poisonRatio: Decimal | null;
   poisonTurns: number;
-  /** I rilanci non usati restano per il turno successivo */
-  banksRerolls: boolean;
+  /** false: il danno calcolato non colpisce subito (Bava) */
+  dealsDamage: boolean;
+  /** Il turno non attacca: le facce restano e si sommano ai dadi del turno dopo */
+  carriesRoll: boolean;
 }
 
 /* ------------------------------------------------------------
@@ -150,8 +154,8 @@ export const BALANCE = {
   MAX_CHAIN: 30,
   /** Rilanci gratuiti per turno (ognuno rilancia i dadi selezionati) */
   REROLLS_PER_TURN: 2,
-  /** Tetto dei rilanci accumulabili con Tiro Truccato (compresi quelli del turno) */
-  MAX_REROLLS: 5,
+  /** Moltiplicatore sul danno del lancio che arriva da una Carica */
+  CHARGE_BONUS: 1.5,
   /** Moltiplicatore forzato per ogni dado ricorsivo non lanciato
    *  all'overflow: Danno = Accumulato * 1.5^rimanenti */
   OVERFLOW_MULT_BASE: 1.5,
