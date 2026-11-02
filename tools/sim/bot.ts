@@ -22,7 +22,7 @@ import { UNLOCKABLE_DICE } from '../../src/core/diceCatalog';
  * ============================================================ */
 
 export interface BotOptions {
-  policy: 'smart' | 'naive';
+  policy: 'smart' | 'casual' | 'naive';
   /** gli HP si portano tra gli incontri (come nel gioco) */
   carryHp: boolean;
 }
@@ -39,7 +39,7 @@ export interface FightLog {
   used: Record<number, number>;
 }
 
-export interface RunResult { diedAt: number; log: FightLog[] }
+export interface RunResult { diedAt: number; log: FightLog[]; items: string[]; gold: number }
 
 function makeBag(rng: ReturnType<typeof seededRNG>): GoblinDie[] {
   const special = [
@@ -87,13 +87,14 @@ async function fight(
   const damage = eng.calcDamage(SKILLS[SkillId.SGANCIO_BRUTALE].skillMod, SkillId.SGANCIO_BRUTALE).toNumber();
   const enemyHp = eng.enemy.maxHp.toNumber();
   const used: Record<number, number> = {};
+  const mistakes = seededRNG(seed * 13 + 5);
   let turns = 0;
   const calc = (id: SkillId) => eng.calcDamage(SKILLS[id].skillMod, id);
 
   while (eng.state === BattleState.WAIT_PLAYER_ACTION && turns < 60) {
     turns++;
     let pick = SkillId.SGANCIO_BRUTALE;
-    if (policy === 'smart') {
+    if (policy !== 'naive') {
       const sg = calc(SkillId.SGANCIO_BRUTALE), pa = calc(SkillId.PARATA);
       const bava = calc(SkillId.BAVA).times(0.6).times(Decimal.max(eng.player.stats.int, 1)).times(3 + eng.mods.poisonTurns);
       const intent = eng.currentIntent;
@@ -105,6 +106,12 @@ async function fight(
       else if (incoming.gt(0) && incoming.gte(effHp.times(0.45)) && pa.gte(incoming.times(0.6))) pick = SkillId.PARATA;
       else if (bava.gt(sg.times(1.3)) && enemyEff.gt(sg.times(2.5)) && eng.enemy.poison.turnsLeft === 0) pick = SkillId.BAVA;
       else if (!incoming.gt(0) && enemyEff.gt(sg.times(2)) && hpFrac > 0.6 && eng.carriedCount === 0 && !eng.charged) pick = SkillId.CARICA;
+      // il giocatore medio sbaglia: un turno su tre sceglie un'azione a caso (non legge l'intento)
+      if (policy === 'casual' && mistakes.next() < 0.3) {
+        const all = [SkillId.SGANCIO_BRUTALE, SkillId.PARATA, SkillId.BAVA, SkillId.CARICA];
+        pick = all[Math.floor(mistakes.next() * all.length)]!;
+        if (pick === SkillId.CARICA && (eng.carriedCount > 0 || eng.charged)) pick = SkillId.SGANCIO_BRUTALE;
+      }
     }
     if (policy === 'smart' && (pick === SkillId.PARATA || pick === SkillId.BAVA)) {
       // per Parata e Bava conviene la mano che rende di più quella skill
@@ -234,7 +241,7 @@ export async function simulateRun(seed: number, opts: BotOptions): Promise<RunRe
       level: L, turns: r.turns, hpLost: r.hpLost, damage: r.damage, enemyHp: r.enemyHp,
       str: stats.str.toNumber(), vit: stats.vit.toNumber(), items: eq.ownedIds.length, used: r.used
     });
-    if (!r.won) return { diedAt: L, log };
+    if (!r.won) return { diedAt: L, log, items: [...eq.ownedIds], gold: run.state.gold.toNumber() };
     run.state.hpRatio = special ? 1 : Math.min(1, Math.max(0.05, r.hpRatio) + BALANCE.HEAL_PER_WIN);
     run.addGold(run.goldReward());
     run.applyInterest();
@@ -247,7 +254,7 @@ export async function simulateRun(seed: number, opts: BotOptions): Promise<RunRe
     if (visitForge && !NOSHOP) forgeVisit(forge, bag, run, special);
     if (visitShop && !NOSHOP) shopVisit(shop, stats, bag, eq, run, special);
   }
-  return { diedAt: 30, log };
+  return { diedAt: 30, log, items: [...eq.ownedIds], gold: run.state.gold.toNumber() };
 }
 
 export interface BalanceReport {

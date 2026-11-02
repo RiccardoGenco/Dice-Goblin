@@ -186,7 +186,7 @@ export const BALANCE = {
   /** Crescita automatica del goblin a ogni vittoria. Prima Forza e Vitalità si
    *  compravano in negozio: ora sono la base che tiene il passo dei nemici, e il
    *  negozio serve a scegliere la build (oggetti, facce, dadi). */
-  WIN_STR_GROWTH: 1.24,
+  WIN_STR_GROWTH: 1.25,
   WIN_VIT_GROWTH: 1.10,
   /** Interesse sull'oro non speso a ogni vittoria, con tetto in "bottini base" */
   INTEREST_RATE: 0.08,
