@@ -73,9 +73,11 @@ describe('Azioni di combattimento', () => {
     expect(engine.state).toBe(BattleState.WAIT_PLAYER_ACTION);
     expect(engine.enemy.hp.toNumber()).toBe(hpE.toNumber());
     expect(engine.player.hp.toNumber()).toBe(hpP.minus(40).toNumber());
-    // 2 facce tenute + 2 nuove, con il bonus della Carica
+    // 2 facce tenute + 2 dadi pescati: 4 carte, se ne giocano 3, col bonus della Carica
     expect(engine.charged).toBe(true);
-    expect(engine.calcDamage(new Decimal(1)).toNumber()).toBeGreaterThanOrEqual(before.times(2 * 1.5).toNumber());
+    expect(engine.cards).toHaveLength(4);
+    expect(engine.playedFaces).toHaveLength(3);
+    expect(engine.calcDamage(new Decimal(1)).toNumber()).toBeGreaterThanOrEqual(before.times(1.5).toNumber());
     await engine.resolvePlayerAction(SkillId.SGANCIO_BRUTALE);
     expect(engine.charged).toBe(false); // il bonus vale per un solo lancio
   });

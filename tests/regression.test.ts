@@ -15,30 +15,33 @@ const uniformDie = (type: FaceType, value: number) =>
   );
 
 describe('Regressioni dalla revisione di novembre', () => {
-  it('BUFF_STR vale per la battaglia e NON modifica le stat persistenti', async () => {
+  it('BUFF_STR vale per la battaglia solo se giocato e NON modifica le stat persistenti', async () => {
     const persistent = mk(10);
     const engine = new BattleEngine(persistent, mk(10, 1e9), [uniformDie(FaceType.BUFF_STR, 5)], seededRNG(3));
     await engine.initTurn();
-    expect(engine.player.stats.str.gt(10)).toBe(true); // il buff agisce in battaglia
-    expect(persistent.str.toNumber()).toBe(10);        // ma non trapela nel salvataggio
+    expect(engine.player.stats.str.toNumber()).toBe(10);  // non ancora giocato
+    expect(engine.calcDamage(new Decimal(1)).toNumber()).toBe(15); // ma l'anteprima lo conta
+    await engine.resolvePlayerAction(SkillId.SGANCIO_BRUTALE);
+    expect(engine.player.stats.str.toNumber()).toBe(15);  // ora vale per la battaglia
+    expect(persistent.str.toNumber()).toBe(10);           // ma non trapela nel salvataggio
   });
 
-  it('il reroll di un lancio ricorsivo extra usa il dado che lo ha generato', async () => {
-    const recursive = new GoblinDie(
-      Rarity.COMUNE,
-      [{ value: new Decimal(1), type: FaceType.RECURSIVE }, ...Array.from({ length: 5 }, () => ({ value: new Decimal(1), type: FaceType.NORMAL }))],
-      seededRNG(1)
-    );
-    const marker = uniformDie(FaceType.NORMAL, 777);
-    const engine: any = new BattleEngine(mk(), mk(10, 1e9), [recursive, marker], seededRNG(5));
+  it('i lanci extra della ricorsione seguono la loro carta: in panchina non contano', async () => {
+    const engine: any = new BattleEngine(mk(), mk(10, 1e9), [uniformDie(FaceType.RECURSIVE, 1), uniformDie(FaceType.RECURSIVE, 1)], seededRNG(5));
     await engine.initTurn();
-    const { faces, sources } = engine.lastRoll;
+    const { faces, sources, rootOf, pendingOf } = engine.lastRoll;
     expect(sources.length).toBe(faces.length);
-    // forza un reroll sull'ultima faccia (spesso un extra oltre la lunghezza della borsa)
-    const idx = faces.length - 1;
-    const src = sources[idx];
-    expect(engine.rerollSelected([idx])).toBe(true);
-    expect(src.faces).toContain(engine.lastRoll.faces[idx]);
+    expect(engine.cards).toHaveLength(2);                   // solo due carte, il resto sono extra
+    expect(engine.playedFaces.length).toBe(faces.length);   // all'inizio giocate tutte
+    expect(engine.overflow.active).toBe(true);              // la catena infinita sfonda il tetto
+    const [a, b] = engine.cards as number[];
+    expect(engine.toggleCard(a!)).toBe(true);               // via la prima carta con la sua catena
+    const left = faces.filter((_: unknown, i: number) => rootOf[i] === b).length;
+    expect(engine.playedFaces).toHaveLength(left);
+    expect(engine.playedFaces.length).toBeLessThan(faces.length);
+    // l'overflow si ricalcola solo sui dadi pendenti della carta rimasta
+    expect(engine.overflow.mult.toNumber()).toBeCloseTo(Math.pow(1.5, pendingOf[b!]), 6);
+    expect(engine.toggleCard(b!)).toBe(false);              // mai zero dadi
     expect(engine.state).toBe(BattleState.WAIT_PLAYER_ACTION);
   });
 

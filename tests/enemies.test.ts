@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import Decimal from 'break_infinity.js';
 import { BattleEngine } from '../src/core/BattleEngine';
 import { GoblinDie } from '../src/core/GoblinDie';
-import { IntentType, Rarity, seededRNG } from '../src/core/types';
+import { BALANCE, IntentType, Rarity, seededRNG } from '../src/core/types';
 import { CLASS_PATTERNS, BOSS_PROFILES, enemyProfileFor } from '../src/core/enemies';
 
 const mk = () => {
@@ -37,10 +37,11 @@ describe('schemi nemici', () => {
     expect(e.peekIntents(2)).toEqual([]);
   });
 
-  it('la penalità del boss toglie rilanci', async () => {
-    const e = mk();
-    e.bossRules = { rerollPenalty: 1, text: 'x' };
+  it('la penalità del boss toglie un dado alla mano', async () => {
+    const stats = { str: new Decimal(5), int: new Decimal(1), vit: new Decimal(10), lck: 0 };
+    const e = new BattleEngine(stats, stats, Array.from({ length: 6 }, () => new GoblinDie(Rarity.COMUNE)), seededRNG(1));
+    e.bossRules = { handPenalty: 1, text: 'x' };
     await e.initTurn();
-    expect(e.rerolls).toBe(1);
+    expect(e.cards.length).toBe(BALANCE.HAND_DRAW - 1);
   });
 });

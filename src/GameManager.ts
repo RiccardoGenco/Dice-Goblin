@@ -37,7 +37,8 @@ import {
   battleState,
   rolledChips,
   overflowActive,
-  rerollsLeft,
+  handSelection,
+  handInfo,
   diceBusy,
   effectsView,
   battleResult,
@@ -179,7 +180,7 @@ export class GameManager {
       champion: CHAMPION_STAT_MULTIPLIER, bossHp: BOSS_HP_MULTIPLIER, bossStr: BOSS_STR_MULTIPLIER, potion: POTION_HEAL,
       gold: BALANCE.GOLD_REWARD_BASE, goldGrowth: BALANCE.GOLD_REWARD_GROWTH,
       costGrowth: BALANCE.SHOP_COST_GROWTH, heal: BALANCE.HEAL_PER_WIN,
-      rerolls: BALANCE.REROLLS_PER_TURN,
+      draw: BALANCE.HAND_DRAW, play: BALANCE.HAND_PLAY,
       growStr: BALANCE.WIN_STR_GROWTH, growVit: BALANCE.WIN_VIT_GROWTH,
       interest: BALANCE.INTEREST_RATE, rerollCost: BALANCE.REROLL_COST
     };
@@ -240,7 +241,7 @@ export class GameManager {
         ['Danno inflitto', formatBigNumber(st.damageDealt)],
         ['Colpo più forte', formatBigNumber(st.maxHit)],
         ['Danno subito', formatBigNumber(st.damageTaken)],
-        ['Rilanci usati', String(st.rerollsUsed)],
+        ['Cambi di mano', String(st.handChanges)],
         ['Reazioni scatenate', String(st.reactions)],
         ['Oro guadagnato / speso', `${formatBigNumber(st.goldEarned)} / ${formatBigNumber(st.goldSpent)}`],
         ['Forza / Vitalità', `${formatBigNumber(this.playerStats.str)} / ${formatBigNumber(this.playerStats.vit)}`]
@@ -382,8 +383,8 @@ export class GameManager {
    *  Usa la STESSA pipeline della risoluzione (equip e overflow inclusi),
    *  quindi il numero mostrato coincide con quello che poi viene inflitto. */
   private refreshPreview(): void {
-    const faces = this.lastFaces;
-    if (faces.length === 0) return;
+    const faces = this.engine.playedFaces;
+    if (this.lastFaces.length === 0) return;
     const calc = (mod: Decimal, id: SkillId | null = null) => this.engine.calcDamage(mod, id);
 
     const fmt = formatBigNumber;
@@ -429,7 +430,7 @@ export class GameManager {
       fire: ef.fire.gt(0) ? fmt(ef.fire) : null,
       reactions: ef.reactions.map(r => ({ ...r }))
     });
-    rerollsLeft.set(this.engine.rerolls);
+    this.publishHand();
     const ov = this.engine.overflow;
     overflowActive.set(ov.active);
     this.overflowMult = ov.mult;
@@ -437,7 +438,7 @@ export class GameManager {
 
   /** Quando i dadi si fermano: il palco annuncia il moltiplicatore totale */
   private announceChain(): void {
-    const s = summarizeChain(this.lastFaces);
+    const s = summarizeChain(this.engine.playedFaces);
     const tier = multTier(s.multProduct);
     if (tier > 0) emitFx('center', 'mult', `×${formatBigNumber(s.multProduct)}`, tier);
 
@@ -483,7 +484,6 @@ export class GameManager {
 
     e.on('onStateChanged', p => {
       battleState.set(p.state as BattleState);
-      rerollsLeft.set(this.engine.rerolls);
       this.refreshCombatants();
     });
 
@@ -512,10 +512,10 @@ export class GameManager {
       const sources = p.sources as GoblinDie[];
       this.lastFaces = faces;
       this.lastSources = sources;
-      this.logRoll(faces);
       overflowActive.set(false);
       this.overflowMult = new Decimal(1);
-      rolledChips.set(faces.map(f => this.toChip(f)));
+      this.publishChips();
+      this.logRoll(faces);
       rollNonce.update(n => n + 1);
       this.refreshPreview();
       if (this.engine.charged) pushLog(`⚡ Carica pronta: le facce tenute valgono ×1.5`);
@@ -523,6 +523,7 @@ export class GameManager {
       // quando i dadi si fermano, il palco annuncia il moltiplicatore.
       p.waitUntilFinished = async () => {
         await this.diceWorld.throwDice(sources, faces);
+        this.diceWorld.setPlayed(new Set(this.engine.playedIndices));
         this.announceChain();
       };
     });
@@ -698,7 +699,7 @@ export class GameManager {
       face.type === FaceType.MULTIPLIER ? `×${v}` :
       face.type === FaceType.BUFF_STR ? `+STR ${v}` :
       face.type === FaceType.RECURSIVE ? `↻` : v;
-    return { text: fx + body, cssClass: CHIP_CLASS[face.type] };
+    return { text: fx + body, cssClass: CHIP_CLASS[face.type], card: 0, extra: false };
   }
 
   private refreshCombatants(): void {
@@ -751,7 +752,14 @@ export class GameManager {
     ].filter(Boolean).join(' ');
     const extra = e.overflow.active ? ` · OVERFLOW ×${formatBigNumber(e.overflow.mult)}` : '';
     const charged = e.charged ? ' · lancio di Carica (×1.5)' : '';
-    this.log.add('roll', `Lancio (${faces.length} facce): ${faces.map(faceLabel).join(' ')}${extra}${charged}`);
+    const roll = (e as any).lastRoll as { rootOf: number[] };
+    const cards = e.cards;
+    const handTxt = cards.map(c => {
+      const kids = faces.map((_, i) => i).filter(i => i !== c && roll.rootOf[i] === c);
+      return `[${faceLabel(faces[c]!)}${kids.length ? ' +' + kids.map(i => faceLabel(faces[i]!)).join('+') : ''}]`;
+    }).join(' ');
+    this.log.add('roll', `Mano (${cards.length} dadi, ${e.playSlots} da giocare): ${handTxt}${charged}`);
+    this.log.add('hand', `Scelta di partenza: ${this.handChoiceText()}${extra}`);
     if (fx || ef.reactions.length) {
       this.log.add('roll', `Effetti pronti: ${fx || '—'}${ef.reactions.length ? ` · reazioni: ${ef.reactions.map(r => r.name).join(', ')}` : ''}`);
     }
@@ -761,7 +769,7 @@ export class GameManager {
   private logAction(id: SkillId): void {
     const e = this.engine;
     const skill = SKILLS[id];
-    const faces = this.lastFaces;
+    const faces = e.playedFaces;
     const flat = faces.filter(f => f.type === FaceType.NORMAL).reduce((a, f) => a.plus(f.value), new Decimal(0));
     const mult = summarizeChain(faces).multProduct;
     const dmg = e.calcDamage(skill.skillMod, id);
@@ -775,32 +783,45 @@ export class GameManager {
       : `danno ${formatBigNumber(dmg)}`;
     this.log.stats.actions[skill.name] = (this.log.stats.actions[skill.name] ?? 0) + 1;
     this.log.add('action', `AZIONE ${skill.name} (×${skill.skillMod.toString()}) → ${what}`);
-    this.log.add('action', `Calcolo: (STR ${formatBigNumber(e.player.stats.str)} + facce ${formatBigNumber(flat)}) × moltiplicatori ×${formatBigNumber(mult)}${ov}${ch} · oggetti: ${active.join('; ') || 'nessuno attivo'} · rilanci rimasti ${e.rerolls}`);
+    this.log.add('action', `Calcolo: (STR ${formatBigNumber(e.player.stats.str)} + facce ${formatBigNumber(flat)}) × moltiplicatori ×${formatBigNumber(mult)}${ov}${ch} · oggetti: ${active.join('; ') || 'nessuno attivo'}`);
   }
 
-  /** Rilancio gratuito: rilancia i dadi scelti e lascia fermi gli altri */
-  public async rerollDice(indices: number[]): Promise<void> {
+  /** Testo della mano scelta: quali dadi e con che esito */
+  private handChoiceText(): string {
+    const e = this.engine;
+    const sel = e.selection;
+    return sel.map(c => faceLabel(this.lastFaces[c]!)).join(' ') + ` (${sel.length}/${e.playSlots})`;
+  }
+
+  /** Aggiorna chip e store della mano (carte e lanci extra) */
+  private publishChips(): void {
+    const roll = (this.engine as any).lastRoll as { rootOf: number[] };
+    rolledChips.set(this.lastFaces.map((f, i) => ({
+      ...this.toChip(f), card: roll.rootOf[i]!, extra: roll.rootOf[i] !== i
+    })));
+    this.publishHand();
+  }
+
+  private publishHand(): void {
+    handSelection.set(this.engine.selection);
+    handInfo.set({ slots: this.engine.playSlots, drawn: this.engine.cards.length });
+  }
+
+  /** Il giocatore gioca o mette in panchina un dado */
+  public toggleCard(card: number): void {
     if (this.engine.state !== BattleState.WAIT_PLAYER_ACTION) return;
-    const before = this.lastFaces.length;
-    const old = [...new Set(indices)].filter(i => i >= 0 && i < before).sort((a, b) => a - b).map(i => ({ i, f: faceLabel(this.lastFaces[i]!) }));
-    if (!this.engine.rerollSelected(indices)) return;
-    this.log.stats.rerollsUsed++;
-    this.log.add('reroll', `Rilancio: ${old.map(o => `#${o.i + 1} ${o.f} → ${faceLabel(this.lastFaces[o.i]!)}`).join(', ')} (restano ${this.engine.rerolls}) · ora ${this.lastFaces.length} facce`);
-    this.logEffectsLine(true);
-    const chosen = new Set(indices);
-    const keep = new Set<number>();
-    for (let i = 0; i < before; i++) if (!chosen.has(i)) keep.add(i);
-    // lastFaces e lastSources sono le STESSE reference mutate dall'engine
-    rolledChips.set(this.lastFaces.map(f => this.toChip(f)));
-    rollNonce.update(n => n + 1);
-    this.refreshPreview();
-    pushLog(`🎲 Rilanciati ${chosen.size} dadi (restano ${this.engine.rerolls})`);
-    diceBusy.set(true);
-    try {
-      await this.diceWorld.throwDice(this.lastSources, this.lastFaces, keep);
-    } finally {
-      diceBusy.set(false);
+    if (!this.engine.toggleCard(card)) {
+      const e = this.engine;
+      if (!e.selection.includes(card) && e.selection.length >= e.playSlots) {
+        pushLog('🎲 Slot pieni: togli prima un dado giocato');
+      }
+      return;
     }
+    this.log.stats.handChanges++;
+    this.log.add('hand', `Mano cambiata: ${this.handChoiceText()}`);
+    this.logEffectsLine(true);
+    this.refreshPreview();
+    this.diceWorld.setPlayed(new Set(this.engine.playedIndices));
     this.announceChain();
   }
 

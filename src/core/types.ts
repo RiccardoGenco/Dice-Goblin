@@ -154,8 +154,10 @@ export enum BattleState {
 export const BALANCE = {
   /** Dopamine Cap: max dadi lanciati in un singolo turno */
   MAX_CHAIN: 30,
-  /** Rilanci gratuiti per turno (ognuno rilancia i dadi selezionati) */
-  REROLLS_PER_TURN: 2,
+  /** Dadi pescati dalla borsa a inizio turno (la mano) */
+  HAND_DRAW: 5,
+  /** Dadi della mano che si giocano nel turno */
+  HAND_PLAY: 3,
   /** Moltiplicatore sul danno del lancio che arriva da una Carica */
   CHARGE_BONUS: 1.5,
   /** Moltiplicatore forzato per ogni dado ricorsivo non lanciato
@@ -184,7 +186,7 @@ export const BALANCE = {
   /** Crescita automatica del goblin a ogni vittoria. Prima Forza e Vitalità si
    *  compravano in negozio: ora sono la base che tiene il passo dei nemici, e il
    *  negozio serve a scegliere la build (oggetti, facce, dadi). */
-  WIN_STR_GROWTH: 1.22,
+  WIN_STR_GROWTH: 1.24,
   WIN_VIT_GROWTH: 1.10,
   /** Interesse sull'oro non speso a ogni vittoria, con tetto in "bottini base" */
   INTEREST_RATE: 0.08,

@@ -49,15 +49,17 @@ describe('Oggetti condizionali', () => {
     expect(e.calcDamage(new Decimal(1)).toNumber()).toBe(20 + 4);
   });
 
-  it('Nervi Saldi premia il non rilanciare, Ruota della Fortuna il contrario', async () => {
-    const nervi = await engineWith(['nervi-saldi'], [uniform(10)]);
-    const ruota = await engineWith(['ruota-fortuna'], [uniform(10)]);
-    expect(nervi.calcDamage(new Decimal(1)).toNumber()).toBeCloseTo(15, 6);
-    expect(ruota.calcDamage(new Decimal(1)).toNumber()).toBeCloseTo(10, 6);
-    nervi.rerollSelected([0]);
-    ruota.rerollSelected([0]);
-    expect(nervi.calcDamage(new Decimal(1)).toNumber()).toBeCloseTo(10, 6);
-    expect(ruota.calcDamage(new Decimal(1)).toNumber()).toBeCloseTo(12.5, 6);
+  it('Nervi Saldi premia le mani senza facce incantate, Ruota della Fortuna i dadi in panchina', async () => {
+    const plain = await engineWith(['nervi-saldi'], [uniform(10)]);
+    const fancy = await engineWith(['nervi-saldi'], [uniform(10, 'veleno')]);
+    expect(plain.calcDamage(new Decimal(1)).toNumber()).toBeCloseTo(15, 6);
+    expect(fancy.calcDamage(new Decimal(1)).toNumber()).toBeCloseTo(10, 6);
+    // 5 dadi pescati, 3 giocati: 2 in panchina
+    const ruota = await engineWith(['ruota-fortuna'], [1, 2, 3, 4, 5].map(() => uniform(10)));
+    expect(ruota.selection).toHaveLength(3);
+    expect(ruota.calcDamage(new Decimal(1)).toNumber()).toBeCloseTo(30 * 1.2 * 1.2, 6);
+    const solo = await engineWith(['ruota-fortuna'], [uniform(10)]);
+    expect(solo.calcDamage(new Decimal(1)).toNumber()).toBeCloseTo(10, 6);
   });
 
   it('Predatore e Frantumascudi leggono lo stato del nemico', async () => {
@@ -83,9 +85,11 @@ describe('Oggetti condizionali', () => {
 });
 
 describe('Oggetti che cambiano le regole', () => {
-  it('Dadi Truccati dà un rilancio in più', async () => {
+  it('Dadi Truccati fa giocare un dado in più, Mano Larga ne fa pescare uno in più', async () => {
     const e = await engineWith(['dadi-truccati'], [uniform(5)]);
-    expect(e.rerolls).toBe(BALANCE.REROLLS_PER_TURN + 1);
+    expect(e.playSlots).toBe(BALANCE.HAND_PLAY + 1);
+    const m = await engineWith(['mano-larga'], Array.from({ length: 8 }, () => uniform(5)));
+    expect(m.cards).toHaveLength(BALANCE.HAND_DRAW + 1);
   });
 
   it('Pentolino Fumante: il fuoco fa ×3', async () => {

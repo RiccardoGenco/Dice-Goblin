@@ -15,7 +15,7 @@ import { hydrateDecimal, serializeDecimal } from './persistence';
  * ============================================================ */
 
 export type LogKind =
-  | 'run' | 'fight' | 'turn' | 'roll' | 'reroll' | 'action' | 'effect' | 'enemy'
+  | 'run' | 'fight' | 'turn' | 'roll' | 'hand' | 'action' | 'effect' | 'enemy'
   | 'result' | 'shop' | 'forge' | 'note';
 
 export interface LogEntry {
@@ -31,7 +31,7 @@ export interface RunStats {
   damageDealt: Decimal;
   maxHit: Decimal;
   damageTaken: Decimal;
-  rerollsUsed: number;
+  handChanges: number;
   reactions: number;
   actions: Record<string, number>;
   goldEarned: Decimal;
@@ -58,13 +58,13 @@ const MAX_ENTRIES = 9000;
 const INDENT: Record<LogKind, string> = {
   run: '', fight: '', shop: '', forge: '',
   turn: '  ', result: '  ', note: '  ',
-  roll: '    ', reroll: '    ', action: '    ', effect: '    ', enemy: '    '
+  roll: '    ', hand: '    ', action: '    ', effect: '    ', enemy: '    '
 };
 
 export function emptyStats(): RunStats {
   return {
     fights: 0, turns: 0, damageDealt: new Decimal(0), maxHit: new Decimal(0),
-    damageTaken: new Decimal(0), rerollsUsed: 0, reactions: 0, actions: {},
+    damageTaken: new Decimal(0), handChanges: 0, reactions: 0, actions: {},
     goldEarned: new Decimal(0), goldSpent: new Decimal(0), itemsBought: 0, forgeOps: 0
   };
 }
@@ -123,7 +123,7 @@ export class RunLog {
       `Esito: ${m.outcome}${m.endLabel ? ` (${m.endLabel})` : ''}${m.killedBy ? ` — ucciso da ${m.killedBy}` : ''}`,
       `Taratura: ${Object.entries(m.tuning).map(([k, v]) => `${k}=${v}`).join(' ')}`,
       `Incontri ${this.stats.fights}, turni ${this.stats.turns}, danno inflitto ${formatBigNumber(this.stats.damageDealt)}, colpo massimo ${formatBigNumber(this.stats.maxHit)}, danno subito ${formatBigNumber(this.stats.damageTaken)}`,
-      `Azioni: ${Object.entries(this.stats.actions).map(([k, v]) => `${k} ${v}`).join(', ') || '—'} | rilanci ${this.stats.rerollsUsed} | reazioni ${this.stats.reactions}`,
+      `Azioni: ${Object.entries(this.stats.actions).map(([k, v]) => `${k} ${v}`).join(', ') || '—'} | cambi di mano ${this.stats.handChanges} | reazioni ${this.stats.reactions}`,
       this.truncated ? '(registro troncato: le prime righe sono state scartate)' : '',
       ''
     ].filter((l, i, a) => l !== '' || i === a.length - 1);

@@ -39,7 +39,8 @@ export interface ItemCtx {
   /** lanci extra generati dalla ricorsione */
   extraDice: number;
   reactions: number;
-  rerollsUsed: number;
+  /** dadi pescati ma lasciati in panchina */
+  benched: number;
   hpRatio: number;
   enemyPoisoned: boolean;
   enemyShielded: boolean;
@@ -49,14 +50,17 @@ export interface ItemCtx {
 export function neutralCtx(): ItemCtx {
   return {
     skill: null, faces: [], poisonFaces: 0, shieldFaces: 0, fireFaces: 0, enchantedFaces: 0,
-    multFaces: 0, extraDice: 0, reactions: 0, rerollsUsed: 0, hpRatio: 1,
+    multFaces: 0, extraDice: 0, reactions: 0, benched: 0, hpRatio: 1,
     enemyPoisoned: false, enemyShielded: false, charged: false
   };
 }
 
 /** Regole del combattimento modificate dagli oggetti */
 export interface ItemMods {
-  extraRerolls: number;
+  /** dadi giocabili in più per turno */
+  extraPlay: number;
+  /** dadi pescati in più per turno */
+  extraDraw: number;
   /** turni in più per ogni veleno applicato */
   poisonTurns: number;
   /** aggiunto al fattore del fuoco (base ×2) */
@@ -73,7 +77,7 @@ export interface ItemMods {
 
 export function neutralMods(): ItemMods {
   return {
-    extraRerolls: 0, poisonTurns: 0, fireFactor: 0, shieldMult: 1,
+    extraPlay: 0, extraDraw: 0, poisonTurns: 0, fireFactor: 0, shieldMult: 1,
     reactionMult: 1, reflectBonus: 0, chargeBonus: 0
   };
 }
@@ -137,14 +141,16 @@ export const ITEMS: EquipmentItem[] = [
     description: 'Lo scudo delle facce vale +50%', mods: { shieldMult: 1.5 } },
   { id: 'scudo-chiodato', name: 'Scudo Chiodato', icon: '📌', rarity: 'non-comune',
     description: 'La Parata rimbalza il 75% invece del 50%', mods: { reflectBonus: 0.25 } },
-  { id: 'dadi-truccati', name: 'Dadi Truccati', icon: '🎲', rarity: 'non-comune',
-    description: '+1 rilancio gratuito per turno', mods: { extraRerolls: 1 } },
+  { id: 'dadi-truccati', name: 'Dadi Truccati', icon: '🎲', rarity: 'raro',
+    description: 'Giochi 1 dado in più per turno', mods: { extraPlay: 1 } },
+  { id: 'mano-larga', name: 'Mano Larga', icon: '🖐️', rarity: 'non-comune',
+    description: 'Peschi 1 dado in più per turno (serve una borsa con più di 5 dadi)', mods: { extraDraw: 1 } },
   { id: 'nervi-saldi', name: 'Nervi Saldi', icon: '🧊', rarity: 'non-comune',
-    description: '×1.5 se non hai usato nessun rilancio', phase: P.MULT,
-    apply: mult(c => (c.rerollsUsed === 0 ? 1.5 : 1)) },
+    description: '×1.5 se non giochi nessuna faccia incantata', phase: P.MULT,
+    apply: mult(c => (c.enchantedFaces === 0 ? 1.5 : 1)) },
   { id: 'ruota-fortuna', name: 'Ruota della Fortuna', icon: '🎡', rarity: 'non-comune',
-    description: '×1.25 per ogni rilancio usato', phase: P.MULT,
-    apply: mult(c => Math.pow(1.25, c.rerollsUsed)) },
+    description: '×1.2 per ogni dado lasciato in panchina', phase: P.MULT,
+    apply: mult(c => Math.pow(1.2, c.benched)) },
   { id: 'predatore', name: 'Dente del Predatore', icon: '🐺', rarity: 'non-comune',
     description: '×1.4 se il nemico è avvelenato', phase: P.MULT,
     apply: mult(c => (c.enemyPoisoned ? 1.4 : 1)) },
@@ -253,7 +259,8 @@ export class EquipmentManager {
     for (const item of this.slots) {
       if (!item?.mods) continue;
       const x = item.mods;
-      m.extraRerolls += x.extraRerolls ?? 0;
+      m.extraPlay += x.extraPlay ?? 0;
+      m.extraDraw += x.extraDraw ?? 0;
       m.poisonTurns += x.poisonTurns ?? 0;
       m.fireFactor += x.fireFactor ?? 0;
       m.shieldMult *= x.shieldMult ?? 1;

@@ -9,7 +9,7 @@
   const TIER_NAME: Record<string, string> = { 'comune': 'Tier 1 · comune', 'non-comune': 'Tier 2 · non comune', 'raro': 'Tier 3 · raro' };
   import {
     playerView, enemyView, intentView, battleState, rolledChips,
-    overflowActive, rerollsLeft, diceBusy, effectsView, battleResult, logLines, equipVersion,
+    overflowActive, handSelection, handInfo, diceBusy, effectsView, battleResult, logLines, equipVersion,
     menuOpen, menuInfo, runSummary,
     uiPhase, goldView, runLabel, shopOffers, shopInfo, shopSpecial, rewardBanner,
     crossroadSpecial, forgeSpecial, forgeOpsLeft, forgeVersion,
@@ -18,7 +18,6 @@
 
   let canvas: HTMLCanvasElement;
   let gm: GameManager | null = null;
-  let selectedChips: number[] = [];
 
   /* ---- Forgia: stato di selezione ---- */
   let selDie: number | null = null;
@@ -151,11 +150,9 @@
     void gm?.newRun();
   }
 
-  /* ---- Tastiera: 1-4 skill, R rilancia i dadi selezionati, Esc deseleziona ---- */
+  /* ---- Tastiera: 1-4 per le skill ---- */
   function onKey(e: KeyboardEvent): void {
     if ($menuOpen || logText !== null || $uiPhase !== 'battle' || e.ctrlKey || e.metaKey || e.altKey) return;
-    if (e.key === 'r' || e.key === 'R') { e.preventDefault(); doReroll(); return; }
-    if (e.key === 'Escape') { selectedChips = []; return; }
     const idx = Number(e.key) - 1;
     if (idx >= 0 && idx < SKILL_ORDER.length && canAct) {
       e.preventDefault();
@@ -171,25 +168,19 @@
   ];
 
   $: canAct = $battleState === BattleState.WAIT_PLAYER_ACTION && !$diceBusy && !$battleResult;
-  $: canReroll = canAct && $rerollsLeft > 0;
-  /* nuovo lancio: la selezione riparte da zero */
-  $: if ($rollNonce >= 0) selectedChips = [];
+  /* La mano raggruppata: ogni carta con i lanci extra che ha generato */
+  $: handGroups = $rolledChips
+    .map((chip, i) => ({ chip, i }))
+    .filter(x => !x.chip.extra)
+    .map(x => ({ ...x, kids: $rolledChips.map((c, j) => ({ c, j })).filter(k => k.c.extra && k.c.card === x.i) }));
 
   function useSkill(id: SkillId): void {
-    selectedChips = [];
     void gm?.useSkill(id);
   }
 
-  function toggleChip(i: number): void {
-    if (!canReroll) return;
-    selectedChips = selectedChips.includes(i) ? selectedChips.filter(c => c !== i) : [...selectedChips, i];
-  }
-
-  function doReroll(): void {
-    if (!canReroll || selectedChips.length === 0) return;
-    const chosen = selectedChips;
-    selectedChips = [];
-    void gm?.rerollDice(chosen);
+  function toggleCard(card: number): void {
+    if (!canAct) return;
+    gm?.toggleCard(card);
   }
 </script>
 
@@ -248,14 +239,21 @@
   <section class="scorebar">
     <div class="tray">
       {#key $rollNonce}
-        {#each $rolledChips as chip, i}
-          <button
-            class="chip {chip.cssClass}"
-            style="--i:{i}"
-            class:selected={selectedChips.includes(i)}
-            class:selectable={canReroll}
-            on:click={() => toggleChip(i)}
-          >{chip.text}</button>
+        {#each handGroups as g, n (g.i)}
+          <div class="card-slot" style="--i:{n}">
+            <button
+              class="chip {g.chip.cssClass}"
+              class:selected={$handSelection.includes(g.i)}
+              class:benched={!$handSelection.includes(g.i)}
+              class:selectable={canAct}
+              title={$handSelection.includes(g.i) ? 'Giocato: tocca per metterlo in panchina' : 'In panchina: tocca per giocarlo'}
+              on:click={() => toggleCard(g.i)}
+            >{g.chip.text}</button>
+            {#each g.kids as k (k.j)}
+              <button class="chip extra {k.c.cssClass}" class:benched={!$handSelection.includes(g.i)}
+                on:click={() => toggleCard(g.i)} title="Lancio extra: segue il dado che lo ha generato">↳ {k.c.text}</button>
+            {/each}
+          </div>
         {/each}
       {/key}
     </div>
@@ -274,11 +272,10 @@
           <span class="f-pow"><small>Potenza</small> <b class="num">{$chainView.power}</b></span>
         </div>
       {/if}
-      <button class="reroll" disabled={!canReroll || selectedChips.length === 0} on:click={doReroll}
-        title="Seleziona i dadi da rilanciare, gli altri restano">
-        🎲 Rilancia {selectedChips.length > 0 ? `(${selectedChips.length})` : ''}
-        <small>{$rerollsLeft} rimasti · <kbd>R</kbd></small>
-      </button>
+      <div class="slots" title="Tocca i dadi per scegliere quali giocare">
+        🎲 Giochi <b>{$handSelection.length}/{$handInfo.slots}</b>
+        <small>{$handInfo.drawn} pescati</small>
+      </div>
     </div>
   </section>
 
@@ -522,7 +519,7 @@
         <h2>❓ Come si gioca</h2>
         <ul>
           <li><b>Ogni turno</b> i dadi della borsa vengono lanciati. Il danno è (Forza + facce normali) × moltiplicatori × azione.</li>
-          <li><b>Rilanci gratuiti:</b> tocca i dadi da rilanciare e premi <kbd>R</kbd>. Gli altri restano fermi.</li>
+          <li><b>La mano:</b> a ogni turno peschi 5 dadi dalla borsa e li tiri una volta sola. Ne giochi 3: tocca un dado per giocarlo o lasciarlo in panchina (i dadi smorzati non contano). La scelta di partenza è quella che fa più danno con lo Sgancio, ma per una Parata o una Bava può convenire cambiarla. I lanci extra della ricorsione seguono il loro dado e non occupano slot.</li>
           <li><b>Azioni</b> (tasti <kbd>1</kbd>-<kbd>4</kbd>): Sgancio (colpo sicuro), Parata (scudo che rimbalza se il nemico attacca), Bava (veleno forte, ignora lo scudo), Carica (salti il turno, tieni le facce, il lancio dopo vale ×1.5). Leggi sempre l'intento del nemico.</li>
           <li><b>Facce incantate:</b> ☠ veleno, 🛡 scudo, 🔥 fuoco. Se escono insieme reagiscono: Vapori (☠🔥), Scudo ardente (🛡🔥), Spore (☠🛡).</li>
           <li><b>Dopo ogni incontro</b> scegli una porta: Mercante (oggetti su tre livelli di rarità, facce, dadi, pozioni, e un rilancio del banco che costa sempre di più) o Forgia (migliora le facce). Forza e Vitalità crescono da sole a ogni vittoria. Una parte dell'oro che non spendi ti torna come interesse. Un incontro su cinque è un Campione o un Boss, con sconti e bottino migliori.</li>
@@ -655,16 +652,14 @@
   .f-pow small { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 2px; }
   .f-pow b { color: var(--gold); font-size: 28px; font-weight: 700; }
   .side { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; justify-content: flex-end; }
-  .reroll {
-    background: #1f1a33; border: 2px solid #ffb84c; color: #ffe2a8; border-radius: 10px;
-    padding: 6px 14px; font: inherit; font-weight: 700; cursor: pointer; display: flex; flex-direction: column; align-items: center; line-height: 1.1;
-  }
-  .reroll small { font-weight: 400; font-size: 11px; color: var(--muted); }
-  .reroll:disabled { opacity: 0.4; cursor: default; border-color: #4a4466; }
+  .slots { color: #ffe2a8; font-weight: 700; display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
+  .slots small { font-weight: 400; font-size: 11px; color: var(--muted); }
+  .card-slot { display: flex; align-items: center; gap: 4px; padding: 2px; }
+  .chip.benched { opacity: 0.4; filter: grayscale(0.6); }
+  .chip.extra { font-size: 15px; min-width: 0; padding: 3px 9px; }
   .fxsum { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-weight: 700; font-size: 17px; }
   .e-p { color: #7dff4c; } .e-s { color: #6cc4ff; } .e-f { color: #ff8a3c; }
   .react { color: #ffd84c; background: #3a2a52; border: 1px solid #ffd84c; border-radius: 12px; padding: 1px 10px; font-size: 14px; animation: chip-in 0.4s cubic-bezier(.2,1.5,.4,1) both; }
-  .reroll-hint { font-size: 14px; color: #ffb84c; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
   /* ---- Dock: la mano di carte ---- */
   .dock { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: end; }

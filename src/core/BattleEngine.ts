@@ -76,15 +76,18 @@ export interface RollResult {
   /** Dado logico che ha prodotto ciascuna faccia (stesso indice di `faces`),
    *  inclusi i lanci extra dei dadi ricorsivi. */
   sources: GoblinDie[];
-  /** true se il turno è stato risolto via Dopamine Cap */
-  overflowed: boolean;
-  /** Moltiplicatore extra applicato all'overflow (1.5^rimanenti) */
-  overflowMultiplier: Decimal;
-  /** Dadi della borsa (le prime `baseCount` facce sono i dadi veri, le altre i lanci extra) */
+  /** Per ogni faccia, l'indice della "carta" della mano da cui discende:
+   *  una carta è un dado pescato (o tenuto da Carica); i lanci extra della
+   *  ricorsione seguono la carta che li ha generati e non occupano slot. */
+  rootOf: number[];
+  /** Dadi ricorsivi non lanciati (Dopamine Cap), contati sulla carta di origine */
+  pendingOf: number[];
+  /** Carte nella mano (facce con rootOf[i] === i) */
   baseCount: number;
-  /** Dadi ricorsivi pendenti non lanciati (Dopamine Cap) */
-  pending: number;
 }
+
+/** Carta con la sua catena di dadi ricorsivi in coda */
+interface QueuedDie { die: GoblinDie; root: number }
 
 export class BattleEngine {
   public state: BattleState = BattleState.INIT_TURN;
@@ -103,22 +106,48 @@ export class BattleEngine {
 
   private listeners = new Map<BattleEventName, Listener[]>();
   private lastRoll: RollResult | null = null;
-  private rerollsLeft = 0;
   /** Facce messe da parte da Carica: si aggiungono ai dadi del turno dopo */
-  private carried: { faces: DieFace[]; sources: GoblinDie[]; pending: number } | null = null;
+  private carried: { faces: DieFace[]; sources: GoblinDie[]; rootOf: number[]; pendingOf: number[] } | null = null;
+  /** Carte della mano scelte per il turno (indici delle radici) */
+  private selected = new Set<number>();
   /** Rimbalzo attivo della Parata durante la fase nemica */
   private reflectRatio: Decimal | null = null;
   /** Regole modificate dagli oggetti equipaggiati (le imposta chi equipaggia) */
   public mods: ItemMods = neutralMods();
   private ctxSkill: SkillId | null = null;
-  private rerollsMax = 0;
   /** Il lancio corrente arriva da una Carica: danno ×CHARGE_BONUS */
   private chargedRoll = false;
   public get charged(): boolean { return this.chargedRoll; }
   /** Facce conservate da Carica (per la UI) */
   public get carriedCount(): number { return this.carried?.faces.length ?? 0; }
-  /** Rilanci gratuiti ancora disponibili nel turno */
-  public get rerolls(): number { return this.rerollsLeft; }
+  /** Dadi che si possono giocare in questo turno */
+  public get playSlots(): number { return Math.max(1, BALANCE.HAND_PLAY + this.mods.extraPlay); }
+  /** Dadi pescati dalla borsa a inizio turno */
+  public get drawCount(): number {
+    return Math.max(1, BALANCE.HAND_DRAW + this.mods.extraDraw - (this.bossRules?.handPenalty ?? 0));
+  }
+  /** Indici delle carte della mano (le radici) */
+  public get cards(): number[] {
+    const r = this.lastRoll;
+    if (!r) return [];
+    const out: number[] = [];
+    r.rootOf.forEach((root, i) => { if (root === i) out.push(i); });
+    return out;
+  }
+  /** Carte scelte per il turno */
+  public get selection(): number[] { return [...this.selected].sort((a, b) => a - b); }
+  /** Facce giocate: quelle delle carte scelte e dei loro lanci extra */
+  public get playedFaces(): DieFace[] {
+    const r = this.lastRoll;
+    return r ? r.faces.filter((_, i) => this.selected.has(r.rootOf[i]!)) : [];
+  }
+  /** Indici (in lastRoll.faces) delle facce giocate */
+  public get playedIndices(): number[] {
+    const r = this.lastRoll;
+    const out: number[] = [];
+    if (r) r.faces.forEach((_, i) => { if (this.selected.has(r.rootOf[i]!)) out.push(i); });
+    return out;
+  }
 
   constructor(
     playerStats: CombatantStats,
@@ -164,7 +193,7 @@ export class BattleEngine {
   public async initTurn(): Promise<void> {
     await this.setState(BattleState.INIT_TURN);
     this.lastRoll = null;
-    this.rerollsLeft = 0;
+    this.selected = new Set();
 
     // Applica il veleno al nemico (calcolato in Decimal)
     this.tickPoison(this.enemy, false); // lo scudo nemico resta fino al suo prossimo turno
@@ -179,126 +208,164 @@ export class BattleEngine {
     await this.rollPhase();
   }
 
-  /** 2. ROLL_PHASE: lancia la borsa dei dadi, con catena ricorsiva
-   *  protetta dal Dopamine Cap (GDD §3.3). */
+  /** 2. ROLL_PHASE: pesca la mano dalla borsa e la lancia una volta sola;
+   *  la catena ricorsiva è protetta dal Dopamine Cap (GDD §3.3).
+   *  Il giocatore sceglie poi quali dadi giocare. */
   private async rollPhase(): Promise<void> {
     await this.setState(BattleState.ROLL_PHASE);
-    this.lastRoll = this.rollDiceChain();
+    this.lastRoll = this.rollHand();
+    this.autoSelect();
 
     await this.emitEvent('onDicesRolled', {
       dices: this.lastRoll.faces,
       sources: this.lastRoll.sources,
-      overflowed: this.lastRoll.overflowed
+      overflowed: this.handOverflow().active
       // La UI aggiunge qui il proprio waitUntilFinished
     });
 
-    if (this.lastRoll.overflowed) {
-      await this.emitEvent('onOverflowTriggered', {
-        multiplier: this.lastRoll.overflowMultiplier
-      });
+    const ov = this.handOverflow();
+    if (ov.active) {
+      await this.emitEvent('onOverflowTriggered', { multiplier: ov.mult });
     }
 
-    this.rerollsMax = Math.max(0, BALANCE.REROLLS_PER_TURN + this.mods.extraRerolls - (this.bossRules?.rerollPenalty ?? 0));
-    this.rerollsLeft = this.rerollsMax;
     await this.setState(BattleState.WAIT_PLAYER_ACTION);
   }
 
+  /** Pesca `drawCount` dadi diversi dalla borsa (senza ripetizioni) */
+  private drawHand(): GoblinDie[] {
+    const pool = [...this.diceBag];
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(this.rng.next() * (i + 1));
+      [pool[i], pool[j]] = [pool[j]!, pool[i]!];
+    }
+    return pool.slice(0, this.drawCount);
+  }
+
   /**
-   * Catena di lancio con Anti-Loop (Dopamine Cap, GDD §3.3):
+   * Lancio della mano con Anti-Loop (Dopamine Cap, GDD §3.3):
    * ogni faccia RECURSIVE accoda un dado extra. Alla soglia
    * MAX_CHAIN (30) la catena si interrompe e i dadi pendenti
    * vengono convertiti in un moltiplicatore forzato:
    *
    *   Danno = Accumulato * 1.5^(dadi rimanenti stimati)
    *
-   * Nota di scaling: l'overflow trasforma una catena potenzialmente
-   * infinita (crescita incontrollata) in un premio esponenziale
-   * FINITO e prevedibile, mantenendo la curva compatibile con lo
-   * scaling HP nemici (1.6^level).
+   * L'overflow vale solo per le carte giocate: i dadi pendenti sono
+   * contati sulla carta ricorsiva che li ha generati.
    */
-  private rollDiceChain(): RollResult {
-    const res: RollResult = {
-      faces: [],
-      sources: [],
-      overflowed: false,
-      overflowMultiplier: new Decimal(1),
-      baseCount: this.diceBag.length,
-      pending: 0
-    };
-    // Carica: le facce messe da parte aprono il lancio, poi i dadi della borsa
+  private rollHand(): RollResult {
+    const res: RollResult = { faces: [], sources: [], rootOf: [], pendingOf: [], baseCount: 0 };
+    // Carica: le facce messe da parte aprono la mano, poi i dadi pescati
     this.chargedRoll = !!this.carried;
     if (this.carried) {
       res.faces.push(...this.carried.faces);
       res.sources.push(...this.carried.sources);
-      res.pending = this.carried.pending;
+      res.rootOf.push(...this.carried.rootOf);
+      res.pendingOf.push(...this.carried.pendingOf);
+      res.baseCount += this.carried.rootOf.filter((r, i) => r === i).length;
       this.carried = null;
     }
-    this.extendChain(res, [...this.diceBag]);
+    const queue: QueuedDie[] = [];
+    for (const die of this.drawHand()) {
+      const idx = res.faces.length;
+      const face = die.roll(this.player.stats.lck);
+      res.faces.push(face);
+      res.sources.push(die);
+      res.rootOf.push(idx);
+      res.pendingOf.push(0);
+      res.baseCount++;
+      this.afterFace(face, queue, idx);
+    }
+    this.extendChain(res, queue);
     return res;
   }
 
   /** Lancia i dadi in coda aggiungendo le facce al risultato; ogni faccia
    *  RECURSIVE accoda un dado extra. Oltre MAX_CHAIN i dadi pendenti
    *  diventano il moltiplicatore forzato dell'overflow. */
-  private extendChain(res: RollResult, queue: GoblinDie[]): void {
-    let pendingNow = 0;
+  private extendChain(res: RollResult, queue: QueuedDie[]): void {
     while (queue.length > 0) {
       if (res.faces.length >= BALANCE.MAX_CHAIN) {
-        pendingNow = queue.length;
+        for (const q of queue) res.pendingOf[q.root] = (res.pendingOf[q.root] ?? 0) + 1;
         break;
       }
-      const die = queue.shift()!;
+      const { die, root } = queue.shift()!;
       const face = die.roll(this.player.stats.lck);
       res.faces.push(face);
       res.sources.push(die);
-      this.afterFace(face, queue);
+      res.rootOf.push(root);
+      res.pendingOf.push(0);
+      this.afterFace(face, queue, root);
     }
-    res.pending += pendingNow;
-    res.overflowed = res.pending > 0;
-    res.overflowMultiplier = res.overflowed
-      ? new Decimal(BALANCE.OVERFLOW_MULT_BASE).pow(res.pending)
-      : new Decimal(1);
   }
 
   /** Effetti immediati di una faccia appena uscita */
-  private afterFace(face: DieFace, queue: GoblinDie[]): void {
+  private afterFace(face: DieFace, queue: QueuedDie[], root: number): void {
     if (face.type === FaceType.RECURSIVE) {
       // Il dado ricorsivo genera un lancio extra (dado casuale della borsa)
       const extra = this.diceBag[Math.floor(this.rng.next() * this.diceBag.length)];
-      if (extra) queue.push(extra);
-    }
-    if (face.type === FaceType.BUFF_STR) {
-      // Buff per il match: agisce sulla Fase FLAT
-      this.player.stats.str = this.player.stats.str.plus(face.value);
+      if (extra) queue.push({ die: extra, root });
     }
   }
 
-  /** Rilancio gratuito: rilancia le facce agli indici scelti e tiene le
-   *  altre. Consuma 1 rilancio per turno. Ritorna false se non consentito. */
-  public rerollSelected(indices: number[]): boolean {
+  /** Overflow di un insieme di carte */
+  private overflowOf(roots: Iterable<number>): { active: boolean; mult: Decimal } {
+    const r = this.lastRoll;
+    let pending = 0;
+    if (r) for (const c of roots) pending += r.pendingOf[c] ?? 0;
+    return { active: pending > 0, mult: pending > 0 ? new Decimal(BALANCE.OVERFLOW_MULT_BASE).pow(pending) : new Decimal(1) };
+  }
+  private handOverflow() { return this.overflowOf(this.cards); }
+
+  /* ---------------- Scelta della mano ---------------- */
+
+  /** Gioca/toglie una carta. Rifiuta se gli slot sono pieni o se si svuoterebbe la selezione. */
+  public toggleCard(card: number): boolean {
     if (this.state !== BattleState.WAIT_PLAYER_ACTION || !this.lastRoll) return false;
-    if (this.rerollsLeft <= 0) return false;
-    const roll = this.lastRoll;
-    const chosen = [...new Set(indices)].filter(i => i >= 0 && i < roll.faces.length);
-    if (chosen.length === 0) return false;
-    this.rerollsLeft--;
-    const queue: GoblinDie[] = [];
-    for (const i of chosen) {
-      const old = roll.faces[i]!;
-      if (old.type === FaceType.BUFF_STR) {
-        this.player.stats.str = this.player.stats.str.minus(old.value); // il buff vecchio decade
-      }
-      const face = roll.sources[i]!.roll(this.player.stats.lck);
-      roll.faces[i] = face;
-      this.afterFace(face, queue);
+    if (!this.cards.includes(card)) return false;
+    if (this.selected.has(card)) {
+      if (this.selected.size <= 1) return false;
+      this.selected.delete(card);
+      return true;
     }
-    this.extendChain(roll, queue);
+    if (this.selected.size >= this.playSlots) return false;
+    this.selected.add(card);
     return true;
+  }
+
+  /** Sceglie le carte da giocare (come toggleCard ma in blocco); false se non valida */
+  public setSelection(cards: number[]): boolean {
+    if (this.state !== BattleState.WAIT_PLAYER_ACTION || !this.lastRoll) return false;
+    const valid = [...new Set(cards)].filter(c => this.cards.includes(c));
+    if (valid.length === 0 || valid.length > this.playSlots) return false;
+    this.selected = new Set(valid);
+    return true;
+  }
+
+  /** Mano migliore per il danno dello Sgancio: è la scelta di partenza,
+   *  così chi non vuole pensarci conferma e basta. */
+  public autoSelect(): void {
+    const cards = this.cards;
+    const k = Math.min(this.playSlots, cards.length);
+    if (k === 0) return;
+    const sgancio = SKILLS[SkillId.SGANCIO_BRUTALE];
+    let best: number[] = cards.slice(0, k);
+    let bestDmg: Decimal | null = null;
+    const walk = (start: number, pick: number[]) => {
+      if (pick.length === k) {
+        this.selected = new Set(pick);
+        const d = this.calcDamage(sgancio.skillMod, SkillId.SGANCIO_BRUTALE);
+        if (!bestDmg || d.gt(bestDmg)) { bestDmg = d; best = [...pick]; }
+        return;
+      }
+      for (let i = start; i < cards.length; i++) walk(i + 1, [...pick, cards[i]!]);
+    };
+    walk(0, []);
+    this.selected = new Set(best);
   }
 
   /** Effetti e reazioni delle facce del lancio corrente */
   public getEffects(): EffectSummary {
-    return summarizeEffects(this.lastRoll?.faces ?? [], FIRE_DAMAGE_FACTOR + this.mods.fireFactor);
+    return summarizeEffects(this.playedFaces, FIRE_DAMAGE_FACTOR + this.mods.fireFactor);
   }
 
   /** Il contesto che gli oggetti leggono per le loro condizioni */
@@ -306,10 +373,10 @@ export class BattleEngine {
     const r = this.lastRoll;
     return buildCtx({
       skill: skill !== undefined ? skill : this.ctxSkill,
-      faces: r?.faces ?? [],
-      extraDice: r ? Math.max(0, r.faces.length - r.baseCount) : 0,
+      faces: this.playedFaces,
+      extraDice: Math.max(0, this.playedFaces.length - this.selected.size),
       reactions: this.getEffects().reactions.length,
-      rerollsUsed: Math.max(0, this.rerollsMax - this.rerollsLeft),
+      benched: r ? Math.max(0, r.baseCount - this.selected.size) : 0,
       hpRatio: this.player.hp.div(Decimal.max(this.player.maxHp, 1)).toNumber(),
       enemyPoisoned: this.enemy.poison.turnsLeft > 0,
       enemyShielded: this.enemy.shield.gt(0),
@@ -319,8 +386,7 @@ export class BattleEngine {
 
   /** Stato dell'overflow del lancio corrente */
   public get overflow(): { active: boolean; mult: Decimal } {
-    const r = this.lastRoll;
-    return { active: !!r?.overflowed, mult: r?.overflowMultiplier ?? new Decimal(1) };
+    return this.overflowOf(this.selected);
   }
 
   /** Danno del lancio corrente con un dato vettore mossa (anteprima e
@@ -331,13 +397,19 @@ export class BattleEngine {
     this.ctxSkill = skillId;
     let dmg: Decimal;
     try {
-      dmg = this.pipeline.calculateTurnDamage(this.player.stats.str, r.faces, skillMod);
+      dmg = this.pipeline.calculateTurnDamage(this.player.stats.str.plus(this.buffNow()), this.playedFaces, skillMod);
     } finally {
       this.ctxSkill = null;
     }
-    if (r.overflowed) dmg = dmg.times(r.overflowMultiplier);
+    const ov = this.overflowOf(this.selected);
+    if (ov.active) dmg = dmg.times(ov.mult);
     if (this.chargedRoll) dmg = dmg.times(BALANCE.CHARGE_BONUS + this.mods.chargeBonus);
     return dmg;
+  }
+
+  /** Forza data dalle facce BUFF_STR giocate (vale subito e resta per il combattimento) */
+  private buffNow(): Decimal {
+    return this.playedFaces.reduce((a, f) => (f.type === FaceType.BUFF_STR ? a.plus(f.value) : a), new Decimal(0));
   }
 
   /** 3-4. WAIT_PLAYER_ACTION -> RESOLUTION (GDD §5.3-5.4) */
@@ -352,12 +424,21 @@ export class BattleEngine {
     // Pipeline a 3 fasi (FLAT -> MULT -> skillMod) + middleware passivi
     const damage = this.calcDamage(skill.skillMod, skillId);
     this.reflectRatio = null;
+    const buff = this.buffNow();
+    if (buff.gt(0)) this.player.stats.str = this.player.stats.str.plus(buff);
 
     if (skill.carriesRoll) {
       // Carica: nessun attacco e nessun effetto di faccia ora; il lancio resta
       const r = this.lastRoll;
-      this.carried = { faces: [...r.faces], sources: [...r.sources], pending: r.pending };
-      await this.emitEvent('onCharge', { count: r.faces.length });
+      const keep = r.faces.map((_, i) => i).filter(i => this.selected.has(r.rootOf[i]!));
+      const remap = new Map(keep.map((old, n) => [old, n]));
+      this.carried = {
+        faces: keep.map(i => r.faces[i]!),
+        sources: keep.map(i => r.sources[i]!),
+        rootOf: keep.map(i => remap.get(r.rootOf[i]!)!),
+        pendingOf: keep.map(i => r.pendingOf[i]!)
+      };
+      await this.emitEvent('onCharge', { count: keep.length });
     } else {
       if (skill.convertsToShield) {
         // Parata: il danno diventa Punti Scudo temporanei

@@ -94,17 +94,6 @@ async function fight(
     turns++;
     let pick = SkillId.SGANCIO_BRUTALE;
     if (policy === 'smart') {
-      // rilanci: ritira le facce NORMALI deboli e senza effetto
-      while (eng.rerolls > 0) {
-        const faces = (eng as any).lastRoll.faces as { type: FaceType; effect?: string; value: Decimal }[];
-        const normals = faces.filter(f => f.type === FaceType.NORMAL);
-        if (normals.length === 0) break;
-        const mean = normals.reduce((a, f) => a + f.value.toNumber(), 0) / normals.length;
-        const idx = faces
-          .map((f, i) => (f.type === FaceType.NORMAL && !f.effect && f.value.toNumber() < mean * 0.6 ? i : -1))
-          .filter(i => i >= 0);
-        if (idx.length === 0 || !eng.rerollSelected(idx)) break;
-      }
       const sg = calc(SkillId.SGANCIO_BRUTALE), pa = calc(SkillId.PARATA);
       const bava = calc(SkillId.BAVA).times(0.6).times(Decimal.max(eng.player.stats.int, 1)).times(3 + eng.mods.poisonTurns);
       const intent = eng.currentIntent;
@@ -116,6 +105,22 @@ async function fight(
       else if (incoming.gt(0) && incoming.gte(effHp.times(0.45)) && pa.gte(incoming.times(0.6))) pick = SkillId.PARATA;
       else if (bava.gt(sg.times(1.3)) && enemyEff.gt(sg.times(2.5)) && eng.enemy.poison.turnsLeft === 0) pick = SkillId.BAVA;
       else if (!incoming.gt(0) && enemyEff.gt(sg.times(2)) && hpFrac > 0.6 && eng.carriedCount === 0 && !eng.charged) pick = SkillId.CARICA;
+    }
+    if (policy === 'smart' && (pick === SkillId.PARATA || pick === SkillId.BAVA)) {
+      // per Parata e Bava conviene la mano che rende di più quella skill
+      const cards = eng.cards, k = Math.min(eng.playSlots, cards.length);
+      let best = eng.selection, bestV: Decimal | null = null;
+      const walk = (start: number, pk: number[]) => {
+        if (pk.length === k) {
+          eng.setSelection(pk);
+          const v = calc(pick);
+          if (!bestV || v.gt(bestV)) { bestV = v; best = [...pk]; }
+          return;
+        }
+        for (let i = start; i < cards.length; i++) walk(i + 1, [...pk, cards[i]!]);
+      };
+      walk(0, []);
+      eng.setSelection(best);
     }
     used[pick] = (used[pick] ?? 0) + 1;
     await eng.resolvePlayerAction(pick);

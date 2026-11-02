@@ -27,6 +27,10 @@ export interface IntentView {
 export interface DieChip {
   text: string;      // es. "×2", "+STR 5", "12"
   cssClass: string;  // normal | multiplier | buff | recursive
+  /** carta della mano da cui discende (le facce dei lanci extra seguono la loro carta) */
+  card: number;
+  /** vero per i lanci extra della ricorsione: non occupano slot */
+  extra: boolean;
 }
 
 export const emptyCombatant = (): CombatantView => ({
@@ -56,7 +60,10 @@ export interface EffectsView {
 }
 export const effectsView = writable<EffectsView | null>(null);
 /** Rilanci gratuiti ancora disponibili nel turno */
-export const rerollsLeft = writable(0);
+/** Carte della mano scelte per il turno */
+export const handSelection = writable<number[]>([]);
+/** Dadi giocabili nel turno e dadi pescati */
+export const handInfo = writable<{ slots: number; drawn: number }>({ slots: 3, drawn: 5 });
 /** true mentre i dadi 3D sono in movimento dopo un rilancio */
 export const diceBusy = writable(false);
 export const battleResult = writable<'victory' | 'defeat' | null>(null);

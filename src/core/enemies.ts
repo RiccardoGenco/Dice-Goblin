@@ -36,8 +36,8 @@ export interface EnemyPattern {
 
 /** Regole speciali dei boss d'Atto: cambiano come si gioca il turno */
 export interface BossRules {
-  /** rilanci gratuiti in meno per turno */
-  rerollPenalty?: number;
+  /** dadi pescati in meno a inizio turno */
+  handPenalty?: number;
   /** quota degli HP massimi recuperata a ogni turno nemico */
   regenPct?: number;
   /** testo mostrato accanto al boss */
@@ -97,7 +97,7 @@ export const BOSS_PROFILES: Record<(typeof BOSS_ORDER)[number], BossProfile> = {
       tip: 'Colpo, scudo, poi la Molestia: un colpo pesante ogni tre turni.',
       steps: [{ type: A }, { type: S }, { type: A, mult: 1.5, tag: 'Molestia' }]
     },
-    rules: { rerollPenalty: 1, text: 'Molesta: un rilancio in meno a ogni turno' }
+    rules: { handPenalty: 1, text: 'Molesta: peschi un dado in meno a ogni turno' }
   },
   'Madre Ildegonda': {
     pattern: {
@@ -113,7 +113,7 @@ export const BOSS_PROFILES: Record<(typeof BOSS_ORDER)[number], BossProfile> = {
       tip: 'Si copre con uno scudo enorme, poi alterna colpi e potenziamenti.',
       steps: [{ type: S, mult: 2.5, tag: 'Scudo arcano' }, { type: A, mult: 1.3 }, { type: B }, { type: A, mult: 1.3 }]
     },
-    rules: { rerollPenalty: 1, regenPct: 0.015, text: 'Verboso: un rilancio in meno e recupera l\'1,5% degli HP a ogni turno' }
+    rules: { handPenalty: 1, regenPct: 0.015, text: 'Verboso: peschi un dado in meno e recupera l\'1,5% degli HP a ogni turno' }
   }
 };
 

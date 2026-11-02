@@ -177,6 +177,19 @@ export class DiceWorld {
     });
   }
 
+  /** Evidenzia i dadi giocati e smorza quelli in panchina (`played`: indici delle facce giocate) */
+  public setPlayed(played: ReadonlySet<number>): void {
+    for (const d of this.active) {
+      const on = played.has(d.index);
+      const mats = Array.isArray(d.mesh.material) ? d.mesh.material : [d.mesh.material];
+      for (const m of mats) {
+        m.transparent = !on;
+        m.opacity = on ? 1 : 0.32;
+        m.needsUpdate = true;
+      }
+    }
+  }
+
   private forceSettle(): void {
     for (const die of this.active) {
       if (die.settled) continue;
