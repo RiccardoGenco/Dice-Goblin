@@ -57,6 +57,7 @@ import {
   doors,
   eventView,
   rewardChoices,
+  rewardKind,
   forgeSpecial,
   forgeOpsLeft,
   forgeVersion,
@@ -80,7 +81,7 @@ import {
   RunSummaryView
 } from './ui/stores';
 import { ACT_BOSSES, CLASS_SPRITES } from './ui/spriteCatalog';
-import { DoorKind, DOOR_META, REST_HEAL, ELITE_HP_MULT, ELITE_STR_MULT, pickDoors, pickEvent, pickEliteRewards, weakestSlot, EventDef } from '@core/crossroad';
+import { DoorKind, DOOR_META, REST_HEAL, ELITE_HP_MULT, ELITE_STR_MULT, pickDoors, pickEvent, pickEliteRewards, pickRelics, weakestSlot, EventDef } from '@core/crossroad';
 import { enemyProfileFor, EnemyProfile } from './core/enemies';
 import { sfx } from './audio';
 
@@ -687,10 +688,10 @@ export class GameManager {
       // ACT_TRANSITION (specs §10): ENTRAMBI gli intermezzi speciali
       // in sequenza — Mercante Reale, poi Gran Forgia
       this.grandForgeQueued = true;
-      this.openShop(true);
+      this.openReward('relic');
     } else if (wasElite) {
       // Premio dell'Élite: un oggetto raro a scelta, poi il bivio
-      this.openReward();
+      this.openReward('elite');
     } else {
       // Bivio: due porte diverse, se ne sceglie UNA.
       // Dorate dopo il Campione (§7.bis).
@@ -810,16 +811,26 @@ export class GameManager {
 
   private rewardItems: EquipmentItem[] = [];
 
-  private openReward(): void {
-    this.rewardItems = pickEliteRewards(defaultRNG, this.equipment.ownedIds);
-    if (this.rewardItems.length === 0) { this.openCrossroad(false); return; }
+  private rewardFrom: 'elite' | 'relic' = 'elite';
+
+  private afterReward(): void {
+    if (this.rewardFrom === 'relic') this.openShop(true); else this.openCrossroad(false);
+  }
+
+  private openReward(kind: 'elite' | 'relic'): void {
+    this.rewardFrom = kind;
+    rewardKind.set(kind);
+    this.rewardItems = kind === 'relic'
+      ? pickRelics(defaultRNG, this.equipment.ownedIds)
+      : pickEliteRewards(defaultRNG, this.equipment.ownedIds);
+    if (this.rewardItems.length === 0) { this.afterReward(); return; }
     const full = this.equipment.freeSlots === 0;
     const weak = full ? this.equipment.slots[weakestSlot(this.equipment)] : null;
     rewardChoices.set(this.rewardItems.map(it => ({
-      id: it.id, icon: it.icon, name: it.name, description: it.description, rarity: it.rarity,
+      id: it.id, icon: it.icon, name: it.name, description: it.description, rarity: it.rarity, relic: !!it.relic,
       note: full && weak ? `Sostituisce ${weak.name}` : ''
     })));
-    this.log.add('result', `Premio Élite: ${this.rewardItems.map(i => i.name).join(' / ')}`);
+    this.log.add('result', `${kind === 'relic' ? 'Reliquie del Boss' : 'Premio Élite'}: ${this.rewardItems.map(i => i.name).join(' / ')}`);
     this.autosave();
     uiPhase.set('reward');
   }
@@ -836,13 +847,13 @@ export class GameManager {
     this.equipment.equip(it);
     this.syncEquipment();
     equipVersion.update(v => v + 1);
-    pushLog(`${it.icon} Premio Élite: ${it.name}`);
+    pushLog(`${it.icon} ${this.rewardFrom === 'relic' ? 'Reliquia' : 'Premio Élite'}: ${it.name}`);
     this.log.add('result', `Scelto: ${it.name}`);
     this.rewardItems = [];
     rewardChoices.set([]);
     this.autosave();
     this.persistLog();
-    this.openCrossroad(false);
+    this.afterReward();
   }
 
   private toChip(face: DieFace): DieChip {
@@ -1000,6 +1011,7 @@ export class GameManager {
     if (get(uiPhase) !== 'shop') return;
     const item = this.equipment.slots[slotIndex];
     if (!item) return;
+    if (item.relic) { sfx.denied(); pushLog('✋ Le reliquie non si vendono'); return; }
     const value = this.shop.sellValue(item, this.run.shopLevel);
     this.equipment.unequip(slotIndex);
     this.run.addGold(value);

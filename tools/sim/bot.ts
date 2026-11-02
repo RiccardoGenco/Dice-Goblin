@@ -6,7 +6,8 @@ import { RunManager, CHAMPION_STAT_MULTIPLIER, BOSS_HP_MULTIPLIER, BOSS_STR_MULT
 import { Forge } from '../../src/core/Forge';
 import { BattleEngine } from '../../src/core/BattleEngine';
 import { Shop } from '../../src/core/Shop';
-import { DoorKind, REST_HEAL, pickDoors, pickEvent, pickEliteRewards, weakestSlot } from '../../src/core/crossroad';
+import { RELICS } from '../../src/core/equipment';
+import { DoorKind, REST_HEAL, pickRelics, pickDoors, pickEvent, pickEliteRewards, weakestSlot } from '../../src/core/crossroad';
 import { EquipmentManager, findItem } from '../../src/core/equipment';
 import { BALANCE, BattleState, FaceType, IntentType, Rarity, SkillId, seededRNG } from '../../src/core/types';
 import { SKILLS } from '../../src/core/skills';
@@ -261,6 +262,26 @@ export async function simulateRun(seed: number, opts: BotOptions): Promise<RunRe
         const best = picks.sort((a, b) => RARITY_ORDER[b.rarity]! - RARITY_ORDER[a.rarity]!)[0]!;
         if (eq.freeSlots === 0) eq.unequip(weakestSlot(eq));
         eq.equip(best);
+      }
+    }
+    if (wasActBoss) {
+      // reliquia del Boss: una su tre (SIM_RELIC=id per misurarne una sola)
+      const forced = (globalThis as any).process?.env?.SIM_RELIC as string | undefined;
+      const offered = pickRelics(rng, eq.ownedIds);
+      const faces = bag.flatMap(d => d.faces);
+      const n = (fx: string) => faces.filter(f => f.effect === fx).length;
+      const types = ['veleno', 'scudo', 'fuoco'].filter(fx => n(fx) > 0).length;
+      const fit: Record<string, number> = {
+        'corona-veleno': n('veleno'), 'bastione': n('scudo') * 0.6, 'cuore-fuoco': n('fuoco'),
+        'mano-giocatore': bag.length >= 8 ? 3 : 0, 'specchio-ricorsivo': faces.filter(f => f.type === FaceType.RECURSIVE).length,
+        'trono-moltiplicatori': faces.filter(f => f.type === FaceType.MULTIPLIER).length / 2,
+        'pelle-drago': n('scudo') * 0.8, 'calice-arcano': types >= 2 ? types * 1.5 : 0, 'stendardo-carica': 1.5, 'panchina-oro': 3
+      };
+      const best = [...offered].sort((a, b) => (fit[b.id] ?? 0) - (fit[a.id] ?? 0))[0];
+      const relic = forced === 'none' ? undefined : (forced ? RELICS.find(r => r.id === forced) : undefined) ?? best;
+      if (relic && !eq.owns(relic.id)) {
+        if (eq.freeSlots === 0) eq.unequip(weakestSlot(eq));
+        eq.equip(relic);
       }
     }
     if (NOSHOP) continue;

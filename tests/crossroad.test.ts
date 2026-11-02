@@ -98,3 +98,26 @@ describe('Eventi', () => {
     expect(c.bag.length).toBe(n + 1);
   });
 });
+
+import { RELICS, findItem } from '../src/core/equipment';
+import { pickRelics } from '../src/core/crossroad';
+
+describe('Reliquie', () => {
+  it('sono 10, rare, trovabili per id e mai nel negozio', () => {
+    expect(RELICS).toHaveLength(10);
+    expect(new Set(RELICS.map(r => r.id)).size).toBe(10);
+    for (const r of RELICS) { expect(r.relic).toBe(true); expect(findItem(r.id)).toBe(r); expect(ITEMS.some(i => i.id === r.id)).toBe(false); }
+  });
+  it('il Boss ne offre tre diverse e non quelle già possedute', () => {
+    const r = pickRelics(seededRNG(4), ['bastione']);
+    expect(r).toHaveLength(3);
+    expect(new Set(r.map(x => x.id)).size).toBe(3);
+    expect(r.some(x => x.id === 'bastione')).toBe(false);
+  });
+  it('con slot pieni una reliquia non viene sostituita', () => {
+    const eq = new EquipmentManager();
+    [RELICS[0]!, ITEMS.filter(i => i.rarity === 'raro')[0]!, ITEMS.filter(i => i.rarity === 'raro')[1]!,
+      ITEMS.filter(i => i.rarity === 'raro')[2]!, ITEMS.filter(i => i.rarity === 'raro')[3]!].forEach(i => eq.equip(i));
+    expect(eq.slots[weakestSlot(eq)]!.relic).not.toBe(true);
+  });
+});

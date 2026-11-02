@@ -133,8 +133,9 @@ export interface EventView {
 export const eventView = writable<EventView | null>(null);
 
 /** Premio dell'Élite: un oggetto a scelta */
-export interface RewardView { id: string; icon: string; name: string; description: string; rarity: string; note: string }
+export interface RewardView { id: string; icon: string; name: string; description: string; rarity: string; note: string; relic: boolean }
 export const rewardChoices = writable<RewardView[]>([]);
+export const rewardKind = writable<'elite' | 'relic'>('elite');
 export const forgeSpecial = writable(false);
 export const forgeOpsLeft = writable(0);
 /** bump per ricalcolare viste e preventivi della forgia */

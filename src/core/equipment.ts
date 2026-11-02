@@ -91,6 +91,8 @@ export interface EquipmentItem {
   phase?: MiddlewarePhase;
   apply?: (pl: DamagePayload, ctx: ItemCtx) => DamagePayload;
   mods?: Partial<ItemMods>;
+  /** Reliquia: solo dai Boss d'Atto, mai in vendita */
+  relic?: boolean;
 }
 
 /* ---- scorciatoie per scrivere gli oggetti ---- */
@@ -185,8 +187,39 @@ export const ITEMS: EquipmentItem[] = [
 /** Compatibilità: l'elenco completo (prima era "demo") */
 export const DEMO_ITEMS = ITEMS;
 
+/** Reliquie: premio dei Boss d'Atto (1 su 3). Tutte rare, ognuna costruisce una build. */
+export const RELICS: EquipmentItem[] = [
+  { id: 'corona-veleno', name: 'Corona del Veleno', icon: '🐍', rarity: 'raro', relic: true,
+    description: 'Bava ×1.6 e ogni veleno dura 2 turni in più', phase: P.MULT,
+    apply: mult(c => (c.skill === SkillId.BAVA ? 1.6 : 1)), mods: { poisonTurns: 2 } },
+  { id: 'bastione', name: 'Bastione del Re', icon: '🏰', rarity: 'raro', relic: true,
+    description: 'Parata ×2 e rimbalza il 25% in più', phase: P.MULT,
+    apply: mult(c => (c.skill === SkillId.PARATA ? 2 : 1)), mods: { reflectBonus: 0.25 } },
+  { id: 'cuore-fuoco', name: 'Cuore di Fuoco', icon: '🔥', rarity: 'raro', relic: true,
+    description: 'Il fuoco fa ×4 invece di ×2 e +8 danno per ogni faccia di fuoco', phase: P.PRE_ADD,
+    apply: flat(c => 8 * c.fireFaces), mods: { fireFactor: 2 } },
+  { id: 'mano-giocatore', name: 'Mano del Giocatore', icon: '🃏', rarity: 'raro', relic: true,
+    description: 'Peschi 2 dadi in più per turno (serve una borsa grande)', mods: { extraDraw: 2 } },
+  { id: 'specchio-ricorsivo', name: 'Specchio Ricorsivo', icon: '🪞', rarity: 'raro', relic: true,
+    description: '×1.4 per ogni lancio extra della ricorsione', phase: P.MULT,
+    apply: mult(c => Math.pow(1.4, c.extraDice)) },
+  { id: 'trono-moltiplicatori', name: 'Trono dei Moltiplicatori', icon: '👑', rarity: 'raro', relic: true,
+    description: '×2 se nel lancio ci sono almeno 2 facce moltiplicatore', phase: P.MULT,
+    apply: mult(c => (c.multFaces >= 2 ? 2 : 1)) },
+  { id: 'pelle-drago', name: 'Pelle di Drago', icon: '🐉', rarity: 'raro', relic: true,
+    description: 'Lo scudo delle facce vale il doppio', mods: { shieldMult: 2 } },
+  { id: 'calice-arcano', name: 'Calice Arcano', icon: '🏆', rarity: 'raro', relic: true,
+    description: 'Le reazioni fanno il doppio del danno e ×1.3 per ogni reazione', phase: P.MULT,
+    apply: mult(c => Math.pow(1.3, c.reactions)), mods: { reactionMult: 2 } },
+  { id: 'stendardo-carica', name: 'Stendardo di Guerra', icon: '🚩', rarity: 'raro', relic: true,
+    description: 'Il lancio dopo una Carica vale ×2.5 invece di ×1.5', mods: { chargeBonus: 1 } },
+  { id: 'panchina-oro', name: "Panchina d'Oro", icon: '🪑', rarity: 'raro', relic: true,
+    description: '×1.15 per ogni dado lasciato in panchina', phase: P.MULT,
+    apply: mult(c => Math.pow(1.15, c.benched)) }
+];
+
 export function findItem(id: string): EquipmentItem | undefined {
-  return ITEMS.find(i => i.id === id);
+  return ITEMS.find(i => i.id === id) ?? RELICS.find(i => i.id === id);
 }
 
 /** Costruisce il contesto da un lancio (usato dal motore) */

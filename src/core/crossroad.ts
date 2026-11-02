@@ -1,6 +1,6 @@
 import Decimal from 'break_infinity.js';
 import { GoblinDie } from './GoblinDie';
-import { ITEMS, EquipmentManager, EquipmentItem } from './equipment';
+import { ITEMS, RELICS, EquipmentManager, EquipmentItem } from './equipment';
 import { RunManager, ELITE_HP_MULT, ELITE_STR_MULT, ELITE_GOLD_MULT } from './RunManager';
 import { upgradedFaceValue } from './format';
 import { CombatantStats, FaceType, Rarity, RNG } from './types';
@@ -70,12 +70,20 @@ export function pickEliteRewards(rng: RNG, ownedIds: readonly string[]): Equipme
   return out;
 }
 
-/** L'oggetto da sostituire quando gli slot sono pieni: il meno raro. */
+/** Tre reliquie diverse tra quelle non possedute: premio del Boss d'Atto. */
+export function pickRelics(rng: RNG, ownedIds: readonly string[], count = 3): EquipmentItem[] {
+  const pool = RELICS.filter(i => !ownedIds.includes(i.id));
+  const out: EquipmentItem[] = [];
+  while (out.length < count && pool.length > 0) out.push(pool.splice(Math.floor(rng.next() * pool.length), 1)[0]!);
+  return out;
+}
+
+/** L'oggetto da sostituire quando gli slot sono pieni: il meno raro, mai una reliquia. */
 export function weakestSlot(eq: EquipmentManager): number {
   const score = (r: string) => (r === 'comune' ? 0 : r === 'non-comune' ? 1 : 2);
   let idx = -1, best = 99;
   eq.slots.forEach((s, i) => {
-    if (s && score(s.rarity) < best) { best = score(s.rarity); idx = i; }
+    if (s && !s.relic && score(s.rarity) < best) { best = score(s.rarity); idx = i; }
   });
   return idx;
 }

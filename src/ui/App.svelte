@@ -14,7 +14,7 @@
     overflowActive, settings, handSelection, handInfo, diceBusy, effectsView, battleResult, logLines, equipVersion,
     menuOpen, menuInfo, runSummary,
     uiPhase, goldView, runLabel, shopOffers, shopInfo, shopSpecial, rewardBanner,
-    crossroadSpecial, doors, eventView, rewardChoices, forgeSpecial, forgeOpsLeft, forgeVersion,
+    crossroadSpecial, doors, eventView, rewardChoices, rewardKind, forgeSpecial, forgeOpsLeft, forgeVersion,
     chainView, skillPreview, skillHints, rollNonce, runProgress
   } from './stores';
 
@@ -447,8 +447,8 @@
   {#if $uiPhase === 'reward'}
     <div class="overlay">
       <div class="overlay-box royal">
-        <h2><Icon e="👹" /> Élite sconfitto</h2>
-        <p class="hint-line">Scegli un oggetto: l'altro è perso.</p>
+        <h2>{#if $rewardKind === 'relic'}<Icon e="👑" /> Reliquia del Boss{:else}<Icon e="👹" /> Élite sconfitto{/if}</h2>
+        <p class="hint-line">{$rewardKind === 'relic' ? 'Scegli una reliquia: le altre due svaniscono. Cambia il modo di giocare.' : 'Scegli un oggetto: l\'altro è perso.'}</p>
         <div class="doors">
           {#each $rewardChoices as r}
             <button class="door golden" on:click={() => gm?.chooseReward(r.id)}>
