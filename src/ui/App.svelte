@@ -7,7 +7,7 @@
   import { MAX_EQUIPMENT_SLOTS } from '@core/equipment';
   import {
     playerView, enemyView, intentView, battleState, rolledChips,
-    overflowActive, rerollsLeft, diceBusy, battleResult, logLines, equipVersion,
+    overflowActive, rerollsLeft, diceBusy, effectsView, battleResult, logLines, equipVersion,
     uiPhase, goldView, runLabel, shopOffers, shopSpecial, rewardBanner,
     crossroadSpecial, forgeSpecial, forgeOpsLeft, forgeVersion,
     chainView, skillPreview, rollNonce, runProgress
@@ -37,6 +37,14 @@
   $: transQs = $forgeVersion >= 0 && selDie !== null && selFace !== null && gm
     ? TRANS_TARGETS.map(tt => ({ ...tt, q: gm.quoteTrasmutazione(selDie ?? 0, selFace ?? 0, tt.t) }))
     : [];
+  const INCANTI = [
+    { e: 'veleno' as const, label: '☠ Veleno' },
+    { e: 'scudo' as const, label: '🛡 Scudo' },
+    { e: 'fuoco' as const, label: '🔥 Fuoco' }
+  ];
+  $: incQs = $forgeVersion >= 0 && selDie !== null && selFace !== null && gm
+    ? INCANTI.map(x => ({ ...x, q: gm.quoteIncanto(selDie ?? 0, selFace ?? 0, x.e) }))
+    : [];
   $: fusioneQ = $forgeVersion >= 0 && selDie !== null && forgeBag.length > 1
     ? (gm?.quoteFusione(selDie, selDie === 0 ? 1 : 0) ?? null) : null;
   $: riforgQ = $forgeVersion >= 0 && selDie !== null && $forgeSpecial
@@ -58,6 +66,10 @@
   function forgeTrans(target: FaceType): void {
     if (selDie !== null && selFace !== null)
       gm?.applyForge({ kind: 'trasmutazione', dieIndex: selDie, faceIndex: selFace, target });
+  }
+  function forgeIncanto(effect: 'veleno' | 'scudo' | 'fuoco'): void {
+    if (selDie !== null && selFace !== null)
+      gm?.applyForge({ kind: 'incanto', dieIndex: selDie, faceIndex: selFace, effect });
   }
   function forgeRiforgia(): void {
     if (selDie !== null) gm?.applyForge({ kind: 'riforgiatura', dieIndex: selDie });
@@ -195,6 +207,14 @@
       {/key}
     </div>
     <div class="side">
+      {#if $effectsView && $battleState === BattleState.WAIT_PLAYER_ACTION && ($effectsView.poison || $effectsView.shield || $effectsView.fire)}
+        <div class="fxsum" title="Effetti delle facce incantate uscite">
+          {#if $effectsView.poison}<span class="e-p">☠ {$effectsView.poison}/t</span>{/if}
+          {#if $effectsView.shield}<span class="e-s">🛡 +{$effectsView.shield}</span>{/if}
+          {#if $effectsView.fire}<span class="e-f">🔥 {$effectsView.fire}</span>{/if}
+          {#each $effectsView.reactions as r (r.id)}<span class="react" title={r.text}>⚗️ {r.name}</span>{/each}
+        </div>
+      {/if}
       {#if $chainView && $battleState === BattleState.WAIT_PLAYER_ACTION}
         <div class="formula" class:hot={$chainView.tier >= 2}>
           {#if $chainView.multCount > 0}<span class="f-mult">×{$chainView.mult}</span>{/if}
@@ -327,6 +347,13 @@
                 title={tq.q.reason ?? tq.q.preview} on:click={() => forgeTrans(tq.t)}>
                 <span>⚗️ {tq.label}</span>
                 <span class="cost">💰 {tq.q.cost}</span>
+              </button>
+            {/each}
+            {#each incQs as iq (iq.e)}
+              <button class="service" disabled={!iq.q.ok || $forgeOpsLeft === 0}
+                title={iq.q.reason ?? iq.q.preview} on:click={() => forgeIncanto(iq.e)}>
+                <span>✨ Incanta {iq.label}</span>
+                <span class="cost">💰 {iq.q.cost}</span>
               </button>
             {/each}
             <button class="service" class:selected={fusionMode}
@@ -466,6 +493,9 @@
   }
   .reroll small { font-weight: 400; font-size: 11px; color: var(--muted); }
   .reroll:disabled { opacity: 0.4; cursor: default; border-color: #4a4466; }
+  .fxsum { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-weight: 700; font-size: 17px; }
+  .e-p { color: #7dff4c; } .e-s { color: #6cc4ff; } .e-f { color: #ff8a3c; }
+  .react { color: #ffd84c; background: #3a2a52; border: 1px solid #ffd84c; border-radius: 12px; padding: 1px 10px; font-size: 14px; animation: chip-in 0.4s cubic-bezier(.2,1.5,.4,1) both; }
   .reroll-hint { font-size: 14px; color: #ffb84c; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
   /* ---- Dock: la mano di carte ---- */

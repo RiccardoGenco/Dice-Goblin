@@ -4,6 +4,7 @@ import { GoblinDie } from '@core/GoblinDie';
 import { formatBigNumber } from '@core/format';
 import { summarizeChain, multTier, magnitudeOf } from '@core/chain';
 import { SKILLS } from '@core/skills';
+import { EFFECT_META, REACTIONS, ReactionId } from '@core/effects';
 import { EquipmentManager, DEMO_ITEMS, EquipmentItem } from '@core/equipment';
 import {
   BALANCE,
@@ -11,6 +12,7 @@ import {
   CombatantStats,
   DieFace,
   EnemyIntent,
+  FaceEffect,
   FaceType,
   IntentType,
   Rarity,
@@ -31,6 +33,7 @@ import {
   overflowActive,
   rerollsLeft,
   diceBusy,
+  effectsView,
   battleResult,
   actLevel,
   equipVersion,
@@ -163,6 +166,14 @@ export class GameManager {
       new GoblinDie(Rarity.EPICO),
       new GoblinDie(Rarity.LEGGENDARIO, special)
     ];
+    // Facce incantate di partenza: due per effetto sui primi tre dadi,
+    // così veleno, scudo e fuoco (e le loro reazioni) si vedono subito
+    const starter: [number, number, FaceEffect][] = [
+      [0, 4, 'veleno'], [0, 5, 'fuoco'],
+      [1, 4, 'scudo'], [1, 5, 'veleno'],
+      [2, 4, 'fuoco'], [2, 5, 'scudo']
+    ];
+    for (const [d, f, effect] of starter) this.bag[d]!.faces[f]!.effect = effect;
   }
 
   public newBattle(level: number): void {
@@ -250,7 +261,7 @@ export class GameManager {
       [SkillId.SGANCIO_BRUTALE]: `${fmt(sgancio)} danni`,
       [SkillId.SCUDO_GOBLIN]: `+${fmt(scudo)} scudo`,
       [SkillId.SPUTO_ACIDO]: `${fmt(sputoBase)} + ☠${fmt(veleno)}×${sputo.poisonTurns}`,
-      [SkillId.TIRO_TRUCCATO]: `${fmt(truccato)} danni · tieni ${this.engine.rerolls} rilanci`
+      [SkillId.TIRO_TRUCCATO]: `${fmt(truccato)} danni`
     });
 
     const s = summarizeChain(faces);
@@ -261,6 +272,13 @@ export class GameManager {
       multCount: s.multCount
     });
 
+    const ef = this.engine.getEffects();
+    effectsView.set({
+      poison: ef.poison.gt(0) ? fmt(ef.poison) : null,
+      shield: ef.shield.gt(0) ? fmt(ef.shield) : null,
+      fire: ef.fire.gt(0) ? fmt(ef.fire) : null,
+      reactions: ef.reactions.map(r => ({ ...r }))
+    });
     rerollsLeft.set(this.engine.rerolls);
     const ov = this.engine.overflow;
     overflowActive.set(ov.active);
@@ -341,6 +359,13 @@ export class GameManager {
     e.on('onShieldGained', p => {
       emitFx('player', 'shield', `+${formatBigNumber(p.amount as Decimal)}`, magnitudeOf(p.amount as Decimal));
       pushLog(`🛡️ Scudo del Goblin: ${formatBigNumber(p.amount as Decimal)} punti`);
+      this.refreshCombatants();
+    });
+
+    e.on('onReaction', p => {
+      const r = REACTIONS[p.id as ReactionId];
+      emitFx('center', 'mult', `${r.icon} ${r.name}`, 3);
+      pushLog(`⚗️ ${r.name}: ${r.text}`);
       this.refreshCombatants();
     });
 
@@ -435,11 +460,12 @@ export class GameManager {
 
   private toChip(face: DieFace): DieChip {
     const v = formatBigNumber(face.value);
-    const text =
+    const fx = face.effect ? `${EFFECT_META[face.effect].icon} ` : '';
+    const body =
       face.type === FaceType.MULTIPLIER ? `×${v}` :
       face.type === FaceType.BUFF_STR ? `+STR ${v}` :
       face.type === FaceType.RECURSIVE ? `↻` : v;
-    return { text, cssClass: CHIP_CLASS[face.type] };
+    return { text: fx + body, cssClass: CHIP_CLASS[face.type] };
   }
 
   private refreshCombatants(): void {
@@ -629,6 +655,10 @@ export class GameManager {
 
   public quoteFusione(targetIndex: number, sacrificeIndex: number): ForgeQuoteView {
     return this.toQuoteView({ kind: 'fusione', targetIndex, sacrificeIndex });
+  }
+
+  public quoteIncanto(dieIndex: number, faceIndex: number, effect: FaceEffect): ForgeQuoteView {
+    return this.toQuoteView({ kind: 'incanto', dieIndex, faceIndex, effect });
   }
 
   public quoteRiforgiatura(dieIndex: number): ForgeQuoteView {

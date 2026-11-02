@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import Decimal from 'break_infinity.js';
 import { DieFace, FaceType, Rarity } from '@core/types';
+import { EFFECT_META } from '@core/effects';
 import { GoblinDie } from '@core/GoblinDie';
 
 /* ============================================================
@@ -22,6 +23,8 @@ const FACE_STYLE: Record<FaceType, { bg: string; fg: string; label: string }> = 
   [FaceType.BUFF_STR]:   { bg: '#1f3d2a', fg: '#7dff9b', label: '+STR' },
   [FaceType.RECURSIVE]:  { bg: '#173a4d', fg: '#5cd0ff', label: '↻' }
 };
+
+const EFFECT_TINT = { veleno: '#7dff4c', scudo: '#4cb4ff', fuoco: '#ff7a2c' } as const;
 
 /** Colore del bordo/glow in base alla rarità del dado */
 const RARITY_GLOW: Record<Rarity, string> = {
@@ -116,6 +119,19 @@ export class DieTextureSet {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       ctx.fillText(style.label, s / 2, s * 0.12);
+    }
+
+    // Effetto incantato (☠ 🛡 🔥): icona in alto, la faccia prende il colore dell'effetto
+    if (face.effect) {
+      ctx.fillStyle = EFFECT_TINT[face.effect];
+      ctx.globalAlpha = 0.28;
+      ctx.fillRect(s * 0.05, s * 0.05, s * 0.9, s * 0.9);
+      ctx.globalAlpha = 1;
+      ctx.font = `${s * 0.2}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(EFFECT_META[face.effect].icon, s / 2, s * 0.1);
     }
 
     // Valore centrale

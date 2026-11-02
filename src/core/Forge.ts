@@ -2,7 +2,8 @@ import Decimal from 'break_infinity.js';
 import { GoblinDie } from './GoblinDie';
 import { scaleShopCost } from './BattleEngine';
 import { PURCHASE_INFLATION } from './Shop';
-import { FaceType, Rarity } from './types';
+import { FaceEffect, FaceType, Rarity } from './types';
+import { EFFECT_META } from './effects';
 
 /* ============================================================
  * Forge — La Forgia dei Dadi (game_flow_specs §9 e §9.bis)
@@ -27,20 +28,22 @@ export const MAX_SPECIAL_FACES = 3;
 export const OPS_PER_VISIT = 2;
 export const OPS_PER_VISIT_SPECIAL = 3; // Gran Forgia
 
-export type ForgeServiceKind = 'tempra' | 'trasmutazione' | 'fusione' | 'riforgiatura';
+export type ForgeServiceKind = 'tempra' | 'trasmutazione' | 'fusione' | 'riforgiatura' | 'incanto';
 
 const BASE_COST: Record<ForgeServiceKind, number> = {
   tempra: 30,
   trasmutazione: 40, // TUNING: 90 -> 40; dimezzata nella Gran Forgia
   fusione: 60,
-  riforgiatura: 70 // esclusiva della Gran Forgia
+  riforgiatura: 70, // esclusiva della Gran Forgia
+  incanto: 35
 };
 
 export type ForgeOperation =
   | { kind: 'tempra'; dieIndex: number; faceIndex: number }
   | { kind: 'trasmutazione'; dieIndex: number; faceIndex: number; target: FaceType }
   | { kind: 'fusione'; targetIndex: number; sacrificeIndex: number }
-  | { kind: 'riforgiatura'; dieIndex: number };
+  | { kind: 'riforgiatura'; dieIndex: number }
+  | { kind: 'incanto'; dieIndex: number; faceIndex: number; effect: FaceEffect };
 
 export interface ForgeContext {
   level: number;
@@ -72,13 +75,13 @@ export function specialFaceCount(die: GoblinDie): number {
 /** Punteggio per determinare la faccia migliore/peggiore (Fusione).
  *  Le MULTIPLIER dominano (agiscono sull'esponenziale), poi le
  *  RECURSIVE, poi le BUFF_STR, infine le NORMAL per valore. */
-function faceScore(face: { value: Decimal; type: FaceType }): number {
+function faceScore(face: { value: Decimal; type: FaceType; effect?: FaceEffect | undefined }): number {
   const v = Math.min(face.value.toNumber(), 1e6);
   switch (face.type) {
     case FaceType.MULTIPLIER: return 1000 + v;
     case FaceType.RECURSIVE: return 500;
     case FaceType.BUFF_STR: return 300 + v;
-    default: return v;
+    default: return face.effect ? v + 50 : v;
   }
 }
 
@@ -105,7 +108,29 @@ export class Forge {
       case 'trasmutazione': return this.quoteTrasmutazione(op, bag, ctx);
       case 'fusione': return this.quoteFusione(op, bag, ctx);
       case 'riforgiatura': return this.quoteRiforgiatura(op, bag, ctx);
+      case 'incanto': return this.quoteIncanto(op, bag, ctx);
     }
+  }
+
+  private quoteIncanto(
+    op: Extract<ForgeOperation, { kind: 'incanto' }>,
+    bag: GoblinDie[],
+    ctx: ForgeContext
+  ): ForgeQuote {
+    const face = bag[op.dieIndex]?.faces[op.faceIndex];
+    if (!face) return this.reject('incanto', ctx, 'Faccia non valida');
+    if (face.type !== FaceType.NORMAL) {
+      return this.reject('incanto', ctx, 'Solo le facce NORMALI si incantano');
+    }
+    if (face.effect === op.effect) {
+      return this.reject('incanto', ctx, 'La faccia ha già questo effetto');
+    }
+    const meta = EFFECT_META[op.effect];
+    return {
+      ok: true,
+      cost: this.cost('incanto', ctx),
+      preview: `${face.value.toString()} → ${meta.icon} ${meta.name} ${face.value.toString()}`
+    };
   }
 
   private reject(kind: ForgeServiceKind, ctx: ForgeContext, reason: string): ForgeQuote {
@@ -231,6 +256,7 @@ export class Forge {
       case 'trasmutazione': {
         const face = bag[op.dieIndex]!.faces[op.faceIndex]!;
         face.type = op.target;
+        face.effect = undefined; // l'incanto vale solo sulle facce NORMALI
         face.value = new Decimal(TRANSMUTE_VALUE[op.target]!);
         break;
       }
@@ -239,9 +265,13 @@ export class Forge {
         const sacrifice = bag[op.sacrificeIndex]!;
         const best = this.bestFace(sacrifice);
         const worstIdx = this.worstFaceIndex(target);
-        target.faces[worstIdx] = { value: new Decimal(best.value), type: best.type };
+        target.faces[worstIdx] = { value: new Decimal(best.value), type: best.type, effect: best.effect };
         target.rarity = Math.min(target.rarity + 1, Rarity.LEGGENDARIO) as Rarity;
         bag.splice(op.sacrificeIndex, 1); // la borsa perde un dado
+        break;
+      }
+      case 'incanto': {
+        bag[op.dieIndex]!.faces[op.faceIndex]!.effect = op.effect;
         break;
       }
       case 'riforgiatura': {
@@ -255,7 +285,7 @@ export class Forge {
     }
   }
 
-  private bestFace(die: GoblinDie): { value: Decimal; type: FaceType } {
+  private bestFace(die: GoblinDie): { value: Decimal; type: FaceType; effect?: FaceEffect | undefined } {
     return die.faces.reduce((a, b) => (faceScore(b) > faceScore(a) ? b : a));
   }
 

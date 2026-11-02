@@ -37,7 +37,7 @@ export function memoryStorage(): StorageLike {
 
 /* ---------- Formati serializzati (solo primitive) ---------- */
 
-interface SavedFace { v: string; t: number }
+interface SavedFace { v: string; t: number; e?: string }
 interface SavedDie { rarity: number; blueprintId?: string; faces: SavedFace[] }
 interface SavedRun {
   version: 1;
@@ -59,17 +59,22 @@ export interface RunSnapshot {
 export function serializeDie(die: GoblinDie): SavedDie {
   const saved: SavedDie = {
     rarity: die.rarity,
-    faces: die.faces.map(f => ({ v: serializeDecimal(f.value), t: f.type }))
+    faces: die.faces.map(f => {
+      const sf: SavedFace = { v: serializeDecimal(f.value), t: f.type };
+      if (f.effect) sf.e = f.effect;
+      return sf;
+    })
   };
   if (die.blueprintId) saved.blueprintId = die.blueprintId;
   return saved;
 }
 
 export function hydrateDie(raw: SavedDie): GoblinDie {
-  const faces: DieFace[] = raw.faces.map(f => ({
-    value: hydrateDecimal(f.v),
-    type: f.t as FaceType
-  }));
+  const faces: DieFace[] = raw.faces.map(f => {
+    const face: DieFace = { value: hydrateDecimal(f.v), type: f.t as FaceType };
+    if (f.e === 'veleno' || f.e === 'scudo' || f.e === 'fuoco') face.effect = f.e;
+    return face;
+  });
   const die = new GoblinDie(raw.rarity as Rarity, faces);
   if (raw.blueprintId) die.blueprintId = raw.blueprintId;
   return die;

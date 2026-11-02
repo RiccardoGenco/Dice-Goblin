@@ -36,9 +36,13 @@ export enum FaceType {
   RECURSIVE
 }
 
+/** Effetto di una faccia NORMALE incantata (vedi effects.ts) */
+export type FaceEffect = 'veleno' | 'scudo' | 'fuoco';
+
 export interface DieFace {
   value: Decimal;
   type: FaceType;
+  effect?: FaceEffect | undefined;
 }
 
 export enum Rarity { COMUNE, NON_COMUNE, RARO, EPICO, LEGGENDARIO }

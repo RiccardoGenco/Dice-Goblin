@@ -43,6 +43,14 @@ export const intentView = writable<IntentView | null>(null);
 export const battleState = writable<BattleState>(BattleState.INIT_TURN);
 export const rolledChips = writable<DieChip[]>([]);
 export const overflowActive = writable(false);
+/** Effetti delle facce uscite e reazioni che ne nascono (null prima del lancio) */
+export interface EffectsView {
+  poison: string | null;
+  shield: string | null;
+  fire: string | null;
+  reactions: { id: string; name: string; icon: string; text: string }[];
+}
+export const effectsView = writable<EffectsView | null>(null);
 /** Rilanci gratuiti ancora disponibili nel turno */
 export const rerollsLeft = writable(0);
 /** true mentre i dadi 3D sono in movimento dopo un rilancio */

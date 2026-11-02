@@ -2,6 +2,7 @@ import Decimal from 'break_infinity.js';
 import { GoblinDie } from './GoblinDie';
 import { DamagePipeline } from './DamagePipeline';
 import { SKILLS } from './skills';
+import { EffectSummary, POISON_BASE_TURNS, SPORE_EXTRA_TURNS, summarizeEffects } from './effects';
 import {
   BALANCE,
   BattleState,
@@ -37,6 +38,7 @@ export type BattleEventName =
   | 'onDamageDealt'
   | 'onShieldGained'
   | 'onPoisonApplied'
+  | 'onReaction' // due effetti di facce diverse reagiscono (vapori, spore...)
   | 'onEnemyIntent'
   | 'onEnemyAction'
   | 'onBattleEnded';
@@ -264,6 +266,11 @@ export class BattleEngine {
     return true;
   }
 
+  /** Effetti e reazioni delle facce del lancio corrente */
+  public getEffects(): EffectSummary {
+    return summarizeEffects(this.lastRoll?.faces ?? []);
+  }
+
   /** Stato dell'overflow del lancio corrente */
   public get overflow(): { active: boolean; mult: Decimal } {
     const r = this.lastRoll;
@@ -315,8 +322,45 @@ export class BattleEngine {
       }
     }
 
+    await this.applyFaceEffects();
+
     if (await this.checkBattleEnd()) return;
     await this.enemyPhase();
+  }
+
+  /** Effetti delle facce incantate uscite nel lancio e loro reazioni */
+  private async applyFaceEffects(): Promise<void> {
+    const fx = this.getEffects();
+    const has = (id: string) => fx.reactions.some(r => r.id === id);
+
+    if (fx.shield.gt(0)) {
+      this.player.shield = this.player.shield.plus(fx.shield);
+      await this.emitEvent('onShieldGained', { amount: fx.shield });
+    }
+    if (fx.poison.gt(0)) {
+      const perTurn = this.enemy.poison.turnsLeft > 0
+        ? this.enemy.poison.perTurn.plus(fx.poison)
+        : fx.poison;
+      const turns = Math.max(this.enemy.poison.turnsLeft, POISON_BASE_TURNS) + (has('spore') ? SPORE_EXTRA_TURNS : 0);
+      this.enemy.poison = { perTurn, turnsLeft: turns };
+      await this.emitEvent('onPoisonApplied', { perTurn: fx.poison, turns });
+    }
+    if (fx.fire.gt(0)) {
+      this.enemy.hp = this.enemy.hp.minus(fx.fire); // ignora lo scudo
+      await this.emitEvent('onDamageDealt', { target: 'enemy', amount: fx.fire });
+    }
+    if (has('vapori')) {
+      const burst = this.enemy.poison.perTurn;
+      this.enemy.hp = this.enemy.hp.minus(burst);
+      await this.emitEvent('onReaction', { id: 'vapori', amount: burst });
+    }
+    if (has('scudo-ardente')) {
+      this.enemy.hp = this.enemy.hp.minus(fx.shield);
+      await this.emitEvent('onReaction', { id: 'scudo-ardente', amount: fx.shield });
+    }
+    if (has('spore')) {
+      await this.emitEvent('onReaction', { id: 'spore', amount: new Decimal(SPORE_EXTRA_TURNS) });
+    }
   }
 
   /** 5. ENEMY_PHASE: esecuzione deterministica dell'intento (GDD §5.5) */
