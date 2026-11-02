@@ -221,7 +221,7 @@ export class GameManager {
       return;
     }
     // variante cromatica per incontro: stessa sprite, aspetto diverso
-    const hue = cls.tint === 'none' ? ((act * 37 + encounter * 53) % 360) : 0;
+    const hue = cls.tint === 'none' ? (((act * 37 + encounter * 53) % 70) - 35) : 0;
     this.enemyName = cls.name;
     enemyInfo.set({ name: cls.name, sprite: cls.sprite, tint: cls.tint, tier: 'normal', hue });
   }
