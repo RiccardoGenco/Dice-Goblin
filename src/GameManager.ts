@@ -46,6 +46,7 @@ import {
   runLabel,
   shopOffers,
   shopInfo,
+  skillHints,
   shopSpecial,
   crossroadSpecial,
   forgeSpecial,
@@ -389,6 +390,20 @@ export class GameManager {
       [SkillId.BAVA]: `☠${fmt(bava)}×${bavaDef.poisonTurns}`,
       [SkillId.CARICA]: `tieni ${faces.length} facce`
     });
+
+    // Avvisi: aiutano a leggere il turno (un colpo letale o uno scudo sprecato non si vedono dai numeri)
+    const hints: Record<number, { text: string; kind: 'good' | 'warn' }> = {};
+    const en = this.engine.enemy;
+    if (sgancio.gte(en.hp.plus(en.shield))) {
+      hints[SkillId.SGANCIO_BRUTALE] = { text: '💀 Colpo letale!', kind: 'good' };
+    }
+    const intentType = this.engine.currentIntent?.type;
+    if (intentType === IntentType.POISON) {
+      hints[SkillId.PARATA] = { text: '⚠ Il veleno ignora lo scudo', kind: 'warn' };
+    } else if (intentType === IntentType.SHIELD || intentType === IntentType.BUFF) {
+      hints[SkillId.PARATA] = { text: '⚠ Il nemico non attacca: scudo sprecato', kind: 'warn' };
+    }
+    skillHints.set(hints);
 
     const s = summarizeChain(faces);
     chainView.set({

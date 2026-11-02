@@ -154,6 +154,8 @@ export interface ChainView {
 export const chainView = writable<ChainView | null>(null);
 /** Anteprima dell'effetto di ogni skill (id numerico -> testo) */
 export const skillPreview = writable<Record<number, string>>({});
+/** Avvisi sulle carte: colpo letale, scudo sprecato contro un intento che non attacca */
+export const skillHints = writable<Record<number, { text: string; kind: 'good' | 'warn' }>>({});
 /** Si incrementa a ogni nuovo lancio: ri-innesca le animazioni dei chip */
 export const rollNonce = writable(0);
 

@@ -13,7 +13,7 @@
     menuOpen, menuInfo, runSummary,
     uiPhase, goldView, runLabel, shopOffers, shopInfo, shopSpecial, rewardBanner,
     crossroadSpecial, forgeSpecial, forgeOpsLeft, forgeVersion,
-    chainView, skillPreview, rollNonce, runProgress
+    chainView, skillPreview, skillHints, rollNonce, runProgress
   } from './stores';
 
   let canvas: HTMLCanvasElement;
@@ -291,6 +291,7 @@
           <span class="c-icon">{s.icon}</span>
           <span class="c-name">{SKILLS[s.id].name}</span>
           <span class="c-preview">{$skillPreview[s.id] ?? '…'}</span>
+          {#if $skillHints[s.id]}<span class="c-alert {$skillHints[s.id]?.kind}">{$skillHints[s.id]?.text}</span>{/if}
           <span class="c-hint">{s.hint}</span>
         </button>
       {/each}
@@ -682,6 +683,9 @@
   .c-icon { font-size: 34px; line-height: 1; }
   .c-name { font-size: 15px; font-weight: 700; text-align: center; }
   .c-preview { font-family: var(--num); font-size: 20px; font-weight: 700; color: var(--gold); text-align: center; min-height: 28px; }
+  .c-alert { font-size: 12px; font-weight: 700; text-align: center; }
+  .c-alert.good { color: #7dff9b; }
+  .c-alert.warn { color: #ffb84c; }
   .c-hint { font-size: 12px; color: #c9b8e8; opacity: 0.85; text-align: center; }
   /* ---- Schermi stretti (telefono in verticale) ---- */
   @media (max-width: 760px) {
