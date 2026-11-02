@@ -7,7 +7,7 @@ from hd_units import humanoid
 RIM = ((1, 0.2, -0.6), 0.8, "#6e9c94")
 
 
-def hero():
+def _hero_model():
     """Goblin eroe: pelle verde, grandi orecchie, giubbetto di cuoio, clava chiodata, ghigno con zanne"""
     m = Model()
     humanoid(m, hip=8.6, shoulder=5.0, sw=4.6, leg=4.2)
@@ -35,6 +35,11 @@ def hero():
     m.ellipsoid("hand_r", (0, 8.4, 0), (2.4, 3.4, 2.4), "wood")                            # testa della clava
     for a, b in (((2.2, 8.4, 0), (3.6, 8.4, 0)), ((-2.2, 8.4, 0), (-3.6, 8.4, 0)), ((0, 8.4, 2.2), (0, 8.4, 3.6)), ((0, 10.6, 0), (0, 11.8, 0))):
         m.capsule("hand_r", a, b, 0.7, 0.2, "steel")                                        # chiodi
+    return m
+
+
+def hero():
+    m = _hero_model()
     frames = []
     for k in range(8):
         a = k * math.pi / 4
@@ -43,6 +48,35 @@ def hero():
         p["fore_r"] = (-45, 0, 0)
         p["abs:hand_r"] = (8, 0, -22 + 3 * math.sin(a))
         p["arm_l"] = (p["arm_l"][0] * 0.5, 0, 6)
+        frames.append(m.render(p, 32, yaw=-28, ground=3, rim=RIM))
+    return frames
+
+
+
+def hero_attack():
+    """Fendente di clava: carica indietro, scatto in avanti con affondo, colpo, recupero (6 frame)"""
+    m = _hero_model()
+    #        braccio x, avambraccio x, clava (rot z), torso x, affondo z, ruota busto y
+    keys = [(10, -40, -10, 4, 0.0, 0), (60, -30, 38, -10, -1.2, -14), (-20, -50, -40, 14, 2.4, 14),
+            (-95, -35, -75, 22, 3.6, 22), (-60, -40, -45, 14, 2.0, 10), (-25, -45, -24, 4, 0.5, 0)]
+    frames = []
+    for ax, fx, hz, tx, lz, ty in keys:
+        p = {"arm_r": (ax, 0, 20), "fore_r": (fx, 0, 0), "abs:hand_r": (8, 0, hz),
+             "arm_l": (-25, 0, 8), "torso": (tx, ty, 0), "root_at": (0, 0, lz),
+             "leg_l": (-18 if lz > 1 else 8, 0, 0), "leg_r": (22 if lz > 1 else -6, 0, 0)}
+        frames.append(m.render(p, 32, yaw=-28, ground=3, rim=RIM))
+    return frames
+
+
+def hero_hurt():
+    """Incassa il colpo: busto indietro, braccia scosse, ritorno (4 frame)"""
+    m = _hero_model()
+    keys = [(-8, 0, -0.8), (-22, 8, -2.0), (-14, 4, -1.2), (-4, 0, -0.3)]
+    frames = []
+    for tx, hx, lz in keys:
+        p = {"arm_r": (-30, 0, 30), "fore_r": (-20, 0, 0), "abs:hand_r": (8, 0, -30),
+             "arm_l": (-55, 0, 28), "fore_l": (-20, 0, 0), "torso": (tx, 0, 0), "head": (hx, 0, 0),
+             "root_at": (0, 0, lz)}
         frames.append(m.render(p, 32, yaw=-28, ground=3, rim=RIM))
     return frames
 

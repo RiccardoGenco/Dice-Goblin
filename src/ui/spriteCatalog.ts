@@ -8,6 +8,8 @@
  * filter (vedi `tints`), così una sprite vale molte varianti.
  * ============================================================ */
 import hero from '../assets/sprites/hero.png?inline';
+import hero_attack from '../assets/sprites/hero_attack.png?inline';
+import hero_hurt from '../assets/sprites/hero_hurt.png?inline';
 import knight from '../assets/sprites/knight.png?inline';
 import paladin from '../assets/sprites/paladin.png?inline';
 import mage from '../assets/sprites/mage.png?inline';
@@ -26,6 +28,9 @@ export interface SpriteDef {
 
 export const SPRITES = {
   hero: { url: hero, size: 64, frames: 8, fps: 8 },
+  /** una tantum, ~0.42 s (stessa durata delle animazioni dello Stage) */
+  hero_attack: { url: hero_attack, size: 64, frames: 6, fps: 14 },
+  hero_hurt: { url: hero_hurt, size: 64, frames: 4, fps: 10 },
   knight: { url: knight, size: 64, frames: 8, fps: 8 },
   paladin: { url: paladin, size: 64, frames: 8, fps: 7 },
   mage: { url: mage, size: 64, frames: 8, fps: 7 },

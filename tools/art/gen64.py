@@ -10,7 +10,7 @@ def scaled(self, pose, size, **kw):
     return orig(self, pose, size * S, **kw)
 Model.render = scaled
 fns = {"knight": hd_units.knight, "bard": goblin_units.bard, "rogue": goblin_units.rogue,
-       "hero": goblin_units2.hero, "mage": goblin_units2.mage, "cleric": goblin_units2.cleric, "paladin": goblin_units2.paladin}
+       "hero": goblin_units2.hero, "hero_attack": goblin_units2.hero_attack, "hero_hurt": goblin_units2.hero_hurt, "mage": goblin_units2.mage, "cleric": goblin_units2.cleric, "paladin": goblin_units2.paladin}
 rows = []
 for i in sys.argv[1:]:
     t = time.time(); im = sheet(fns[i]()); im.save(f"{out}/{i}.png"); rows.append(im); print(i, im.size, round(time.time()-t), "s", flush=True)

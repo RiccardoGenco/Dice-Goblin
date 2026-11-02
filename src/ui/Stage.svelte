@@ -80,6 +80,7 @@
   $: enemyW = scale * SPRITES[$enemyInfo.sprite].size;
   $: heroScale = clamp(Math.round((H * 0.64) / SPRITES.hero.size), 3, 14);
   $: heroW = heroScale * SPRITES.hero.size;
+  $: heroSprite = playerAnim === 'lunge' ? 'hero_attack' : playerAnim === 'hurt' ? 'hero_hurt' : 'hero';
   $: hudW = clamp(Math.round(W * 0.24), 150, 320);
   $: ui = clamp(H / 420, 0.7, 1.6); // fattore per testi ed effetti
   $: enemyFilter = $enemyInfo.hue
@@ -141,7 +142,7 @@
   <!-- ===== Goblin (sinistra) ===== -->
   <div class="slot player-slot">
     <div class="body player-body {playerAnim}" class:dead={lost}>
-      <Sprite id="hero" scale={heroScale} />
+      <Sprite id={heroSprite} once={heroSprite !== 'hero'} scale={heroScale} />
     </div>
     <div class="shadow" style="width:{heroW * 0.8}px"></div>
   </div>
