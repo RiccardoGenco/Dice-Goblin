@@ -47,7 +47,7 @@ export class DiceWorld {
 
   constructor(
     canvas: HTMLCanvasElement,
-    private readonly magneticConfig: MagneticConfig = DEFAULT_MAGNETIC,
+    private readonly magneticConfig: MagneticConfig = { ...DEFAULT_MAGNETIC, uprightYaw: true },
     private readonly rng: RNG = defaultRNG
   ) {
     // --- Rendering

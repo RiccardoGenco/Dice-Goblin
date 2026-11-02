@@ -2,7 +2,7 @@ import Decimal from 'break_infinity.js';
 import { get } from 'svelte/store';
 import { BattleEngine, Combatant } from '@core/BattleEngine';
 import { GoblinDie } from '@core/GoblinDie';
-import { formatBigNumber } from '@core/format';
+import { formatBigNumber, formatFaceValue } from '@core/format';
 import { summarizeChain, multTier, magnitudeOf } from '@core/chain';
 import { SKILLS } from '@core/skills';
 import { EFFECT_META, REACTIONS, ReactionId } from '@core/effects';
@@ -647,7 +647,7 @@ export class GameManager {
   }
 
   private toChip(face: DieFace): DieChip {
-    const v = formatBigNumber(face.value);
+    const v = formatFaceValue(face.value);
     const fx = face.effect ? `${EFFECT_META[face.effect].icon} ` : '';
     const body =
       face.type === FaceType.MULTIPLIER ? `×${v}` :

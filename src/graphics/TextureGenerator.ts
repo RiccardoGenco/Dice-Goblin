@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import Decimal from 'break_infinity.js';
 import { DieFace, FaceType, Rarity } from '@core/types';
 import { EFFECT_META } from '@core/effects';
 import { GoblinDie } from '@core/GoblinDie';
+import { formatFaceValue } from '@core/format';
 
 /* ============================================================
  * TextureGenerator — Facce dinamiche su Canvas 2D (GDD §6.3)
@@ -19,9 +19,9 @@ const TEXTURE_SIZE = 256;
 /** Palette per tipo di faccia (coerente con la pipeline danno) */
 const FACE_STYLE: Record<FaceType, { bg: string; fg: string; label: string }> = {
   [FaceType.NORMAL]:     { bg: '#2b2b33', fg: '#e8e8f0', label: '' },
-  [FaceType.MULTIPLIER]: { bg: '#3d1f4f', fg: '#ff5c8a', label: '×' }, // viola/rosa: esponenziale!
+  [FaceType.MULTIPLIER]: { bg: '#3d1f4f', fg: '#ff5c8a', label: 'MOLT' }, // viola/rosa: esponenziale!
   [FaceType.BUFF_STR]:   { bg: '#1f3d2a', fg: '#7dff9b', label: '+STR' },
-  [FaceType.RECURSIVE]:  { bg: '#173a4d', fg: '#5cd0ff', label: '↻' }
+  [FaceType.RECURSIVE]:  { bg: '#173a4d', fg: '#5cd0ff', label: '' }
 };
 
 const EFFECT_TINT = { veleno: '#7dff4c', scudo: '#4cb4ff', fuoco: '#ff7a2c' } as const;
@@ -34,18 +34,6 @@ const RARITY_GLOW: Record<Rarity, string> = {
   [Rarity.EPICO]: '#b04cff',
   [Rarity.LEGGENDARIO]: '#ffb84c'
 };
-
-/** Formattazione compatta del valore della faccia sul canvas.
- *  Oltre il milione passa alla notazione scientifica: i valori
- *  delle facce scalano esponenzialmente con i potenziamenti. */
-function formatFaceValue(value: Decimal): string {
-  if (value.lt(1000)) {
-    const n = value.toNumber();
-    return Number.isInteger(n) ? String(n) : n.toFixed(1);
-  }
-  if (value.lt(1_000_000)) return value.toNumber().toLocaleString('it-IT');
-  return value.toStringWithDecimalPlaces(1); // es. "1.5e9"
-}
 
 /** Set riutilizzabile di canvas+texture per le 6 facce di un dado */
 export class DieTextureSet {
@@ -112,36 +100,53 @@ export class DieTextureSet {
     ctx.strokeRect(s * 0.05, s * 0.05, s * 0.9, s * 0.9);
     ctx.shadowBlur = 0;
 
-    // Etichetta del tipo (×, ↻, +STR) in alto
+    // Etichetta del tipo (MOLT, ↻, +STR) in alto
     if (style.label) {
       ctx.fillStyle = style.fg;
-      ctx.font = `bold ${s * 0.16}px monospace`;
+      ctx.font = `bold ${s * 0.13}px monospace`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.fillText(style.label, s / 2, s * 0.12);
+      ctx.fillText(style.label, s / 2, s * 0.11);
     }
 
-    // Effetto incantato (☠ 🛡 🔥): icona in alto, la faccia prende il colore dell'effetto
+    // Effetto incantato (☠ 🛡 🔥): la faccia prende il colore dell'effetto
+    // e l'icona sta in BASSO, per non sovrapporsi all'etichetta del tipo
     if (face.effect) {
       ctx.fillStyle = EFFECT_TINT[face.effect];
       ctx.globalAlpha = 0.28;
       ctx.fillRect(s * 0.05, s * 0.05, s * 0.9, s * 0.9);
       ctx.globalAlpha = 1;
-      ctx.font = `${s * 0.2}px sans-serif`;
+      ctx.font = `${s * 0.17}px sans-serif`;
       ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
+      ctx.textBaseline = 'middle';
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(EFFECT_META[face.effect].icon, s / 2, s * 0.1);
+      ctx.fillText(EFFECT_META[face.effect].icon, s / 2, s * 0.82);
     }
 
-    // Valore centrale
+    // Valore centrale. La faccia ricorsiva mostra solo ↻ (il suo valore è sempre 1).
+    if (face.type === FaceType.RECURSIVE) {
+      ctx.fillStyle = style.fg;
+      ctx.font = `bold ${s * 0.5}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('↻', s / 2, face.effect ? s * 0.46 : s * 0.5);
+      return;
+    }
+    const prefix = face.type === FaceType.MULTIPLIER ? '×' : '';
+    const text = prefix + formatFaceValue(face.value);
+    // Il corpo si restringe finché il testo sta dentro il bordo
+    const maxWidth = s * 0.76;
+    let size = s * 0.36;
+    ctx.font = `bold ${size}px monospace`;
+    const w = ctx.measureText(text).width;
+    if (w > maxWidth) {
+      size = Math.max(s * 0.14, size * (maxWidth / w));
+      ctx.font = `bold ${size}px monospace`;
+    }
     ctx.fillStyle = style.fg;
-    ctx.font = `bold ${s * 0.34}px monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const prefix = face.type === FaceType.MULTIPLIER ? '×' : '';
-    ctx.fillText(prefix + formatFaceValue(face.value), s / 2, s * 0.58);
-
+    ctx.fillText(text, s / 2, face.effect || style.label ? s * 0.54 : s * 0.5);
   }
 
   /** Rilascio esplicito delle risorse GPU alla distruzione del dado */

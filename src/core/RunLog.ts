@@ -1,7 +1,7 @@
 import Decimal from 'break_infinity.js';
 import { DieFace, FaceType } from './types';
 import { EFFECT_META } from './effects';
-import { formatBigNumber } from './format';
+import { formatBigNumber, formatFaceValue } from './format';
 import { hydrateDecimal, serializeDecimal } from './persistence';
 
 /* ============================================================
@@ -71,7 +71,7 @@ export function emptyStats(): RunStats {
 
 /** Come si legge una faccia nel registro: 6, ☠6, ×2, +2💪, ↻ */
 export function faceLabel(f: DieFace): string {
-  const v = formatBigNumber(f.value);
+  const v = formatFaceValue(f.value);
   const fx = f.effect ? EFFECT_META[f.effect].icon : '';
   switch (f.type) {
     case FaceType.MULTIPLIER: return `×${v}`;

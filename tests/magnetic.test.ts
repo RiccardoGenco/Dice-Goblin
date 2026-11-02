@@ -5,7 +5,8 @@ import {
   computeTargetQuaternion,
   faceAlignment,
   magneticStep,
-  DEFAULT_MAGNETIC
+  DEFAULT_MAGNETIC,
+  textureUprightness
 } from '../src/graphics/MagneticPhysics';
 
 /** Quaternione casuale ma deterministico per i test */
@@ -55,5 +56,32 @@ describe('MagneticPhysics — determinismo del quaternione target', () => {
     for (const n of FACE_NORMALS) expect(n.length()).toBeCloseTo(1, 10);
     expect(FACE_NORMALS[0]!.dot(FACE_NORMALS[2]!)).toBe(0); // +x ⟂ +y
     expect(FACE_NORMALS[0]!.dot(FACE_NORMALS[1]!)).toBe(-1); // +x opposto a -x
+  });
+});
+
+describe('MagneticPhysics — numero sempre dritto (uprightYaw)', () => {
+  it('il target mette la faccia in alto E il numero dritto, per ogni faccia e rotazione', () => {
+    for (let faceIndex = 0; faceIndex < 6; faceIndex++) {
+      for (let seed = 1; seed <= 25; seed++) {
+        const t = computeTargetQuaternion(randomQuaternion(seed * 3 + faceIndex), faceIndex, true);
+        expect(faceAlignment(t, faceIndex)).toBeGreaterThan(0.99999);
+        expect(textureUprightness(t, faceIndex)).toBeGreaterThan(0.99999);
+      }
+    }
+  });
+
+  it('magneticStep con uprightYaw converge e finisce con il numero dritto', () => {
+    const cfg = { ...DEFAULT_MAGNETIC, uprightYaw: true };
+    for (let faceIndex = 0; faceIndex < 6; faceIndex++) {
+      let q = randomQuaternion(faceIndex * 5 + 2);
+      let settled = false;
+      for (let i = 0; i < 400 && !settled; i++) {
+        const r = magneticStep(q, faceIndex, cfg);
+        q = r.rotation;
+        settled = r.settled;
+      }
+      expect(settled).toBe(true);
+      expect(textureUprightness(q, faceIndex)).toBeGreaterThan(0.999);
+    }
   });
 });
