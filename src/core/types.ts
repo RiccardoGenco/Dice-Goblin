@@ -110,7 +110,7 @@ export enum SkillId {
   SGANCIO_BRUTALE, // Attacco:  skillMod 1.5
   SCUDO_GOBLIN,    // Difesa:   danno -> Punti Scudo
   SPUTO_ACIDO,     // DoT:      20% del danno come Veleno x3 turni
-  TIRO_TRUCCATO    // Utility:  50% danno, fino a 2 reroll
+  COLPO_COMBO      // Combo:    x0.8, ma la combinazione di dadi conta al quadrato
 }
 
 export interface SkillDefinition {
@@ -123,8 +123,8 @@ export interface SkillDefinition {
   /** Frazione del danno applicata come veleno per `poisonTurns` */
   poisonRatio: Decimal | null;
   poisonTurns: number;
-  /** Numero massimo di dadi rilanciabili prima della risoluzione */
-  rerolls: number;
+  /** Esponente applicato al moltiplicatore di combinazione (1 = normale) */
+  comboPower: number;
 }
 
 /* ------------------------------------------------------------
@@ -144,6 +144,8 @@ export enum BattleState {
 export const BALANCE = {
   /** Dopamine Cap: max dadi lanciati in un singolo turno */
   MAX_CHAIN: 30,
+  /** Rilanci gratuiti per turno (ognuno rilancia i dadi selezionati) */
+  REROLLS_PER_TURN: 2,
   /** Moltiplicatore forzato per ogni dado ricorsivo non lanciato
    *  all'overflow: Danno = Accumulato * 1.5^rimanenti */
   OVERFLOW_MULT_BASE: 1.5,

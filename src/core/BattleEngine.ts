@@ -2,6 +2,7 @@ import Decimal from 'break_infinity.js';
 import { GoblinDie } from './GoblinDie';
 import { DamagePipeline } from './DamagePipeline';
 import { SKILLS } from './skills';
+import { ComboResult, comboOfRoll } from './combos';
 import {
   BALANCE,
   BattleState,
@@ -74,6 +75,10 @@ export interface RollResult {
   overflowed: boolean;
   /** Moltiplicatore extra applicato all'overflow (1.5^rimanenti) */
   overflowMultiplier: Decimal;
+  /** Dadi della borsa (le prime `baseCount` facce sono i dadi veri, le altre i lanci extra) */
+  baseCount: number;
+  /** Dadi ricorsivi pendenti non lanciati (Dopamine Cap) */
+  pending: number;
 }
 
 export class BattleEngine {
@@ -87,6 +92,8 @@ export class BattleEngine {
   private listeners = new Map<BattleEventName, Listener[]>();
   private lastRoll: RollResult | null = null;
   private rerollsLeft = 0;
+  /** Rilanci gratuiti ancora disponibili nel turno */
+  public get rerolls(): number { return this.rerollsLeft; }
 
   constructor(
     playerStats: CombatantStats,
@@ -166,6 +173,7 @@ export class BattleEngine {
       });
     }
 
+    this.rerollsLeft = BALANCE.REROLLS_PER_TURN;
     await this.setState(BattleState.WAIT_PLAYER_ACTION);
   }
 
@@ -183,57 +191,98 @@ export class BattleEngine {
    * scaling HP nemici (1.6^level).
    */
   private rollDiceChain(): RollResult {
-    const faces: DieFace[] = [];
-    const sources: GoblinDie[] = [];
-    const queue: GoblinDie[] = [...this.diceBag];
-    let rolledCount = 0;
-    let pendingRecursive = 0;
+    const res: RollResult = {
+      faces: [],
+      sources: [],
+      overflowed: false,
+      overflowMultiplier: new Decimal(1),
+      baseCount: this.diceBag.length,
+      pending: 0
+    };
+    this.extendChain(res, [...this.diceBag]);
+    return res;
+  }
 
+  /** Lancia i dadi in coda aggiungendo le facce al risultato; ogni faccia
+   *  RECURSIVE accoda un dado extra. Oltre MAX_CHAIN i dadi pendenti
+   *  diventano il moltiplicatore forzato dell'overflow. */
+  private extendChain(res: RollResult, queue: GoblinDie[]): void {
+    let pendingNow = 0;
     while (queue.length > 0) {
-      if (rolledCount >= BALANCE.MAX_CHAIN) {
-        // Dadi pendenti stimati = coda residua (non lanciati fisicamente)
-        pendingRecursive = queue.length;
+      if (res.faces.length >= BALANCE.MAX_CHAIN) {
+        pendingNow = queue.length;
         break;
       }
       const die = queue.shift()!;
       const face = die.roll(this.player.stats.lck);
-      faces.push(face);
-      sources.push(die);
-      rolledCount++;
-
-      if (face.type === FaceType.RECURSIVE) {
-        // Il dado ricorsivo genera un lancio extra (dado casuale della borsa)
-        const extraIndex = Math.floor(this.rng.next() * this.diceBag.length);
-        const extra = this.diceBag[extraIndex];
-        if (extra) queue.push(extra);
-      }
-      if (face.type === FaceType.BUFF_STR) {
-        // Buff permanente per il match: agisce sulla Fase FLAT
-        this.player.stats.str = this.player.stats.str.plus(face.value);
-      }
+      res.faces.push(face);
+      res.sources.push(die);
+      this.afterFace(face, queue);
     }
-
-    const overflowed = pendingRecursive > 0;
-    const overflowMultiplier = overflowed
-      ? new Decimal(BALANCE.OVERFLOW_MULT_BASE).pow(pendingRecursive)
+    res.pending += pendingNow;
+    res.overflowed = res.pending > 0;
+    res.overflowMultiplier = res.overflowed
+      ? new Decimal(BALANCE.OVERFLOW_MULT_BASE).pow(res.pending)
       : new Decimal(1);
-
-    return { faces, sources, overflowed, overflowMultiplier };
   }
 
-  /** Reroll selettivo (Tiro Truccato): rilancia i dadi agli indici
-   *  indicati prima della risoluzione. */
-  public rerollDice(indices: number[], skillId: SkillId): void {
-    if (this.state !== BattleState.WAIT_PLAYER_ACTION || !this.lastRoll) {
-      throw new Error('Reroll consentito solo in WAIT_PLAYER_ACTION');
+  /** Effetti immediati di una faccia appena uscita */
+  private afterFace(face: DieFace, queue: GoblinDie[]): void {
+    if (face.type === FaceType.RECURSIVE) {
+      // Il dado ricorsivo genera un lancio extra (dado casuale della borsa)
+      const extra = this.diceBag[Math.floor(this.rng.next() * this.diceBag.length)];
+      if (extra) queue.push(extra);
     }
-    const allowed = SKILLS[skillId].rerolls;
-    for (const idx of indices.slice(0, allowed)) {
-      const die = this.lastRoll.sources[idx];
-      if (die && this.lastRoll.faces[idx]) {
-        this.lastRoll.faces[idx] = die.roll(this.player.stats.lck);
+    if (face.type === FaceType.BUFF_STR) {
+      // Buff per il match: agisce sulla Fase FLAT
+      this.player.stats.str = this.player.stats.str.plus(face.value);
+    }
+  }
+
+  /** Rilancio gratuito: rilancia le facce agli indici scelti e tiene le
+   *  altre. Consuma 1 rilancio per turno. Ritorna false se non consentito. */
+  public rerollSelected(indices: number[]): boolean {
+    if (this.state !== BattleState.WAIT_PLAYER_ACTION || !this.lastRoll) return false;
+    if (this.rerollsLeft <= 0) return false;
+    const roll = this.lastRoll;
+    const chosen = [...new Set(indices)].filter(i => i >= 0 && i < roll.faces.length);
+    if (chosen.length === 0) return false;
+    this.rerollsLeft--;
+    const queue: GoblinDie[] = [];
+    for (const i of chosen) {
+      const old = roll.faces[i]!;
+      if (old.type === FaceType.BUFF_STR) {
+        this.player.stats.str = this.player.stats.str.minus(old.value); // il buff vecchio decade
       }
+      const face = roll.sources[i]!.roll(this.player.stats.lck);
+      roll.faces[i] = face;
+      this.afterFace(face, queue);
     }
+    this.extendChain(roll, queue);
+    return true;
+  }
+
+  /** Stato dell'overflow del lancio corrente */
+  public get overflow(): { active: boolean; mult: Decimal } {
+    const r = this.lastRoll;
+    return { active: !!r?.overflowed, mult: r?.overflowMultiplier ?? new Decimal(1) };
+  }
+
+  /** Combinazione di dadi del lancio corrente */
+  public getCombo(): ComboResult | null {
+    const r = this.lastRoll;
+    return r ? comboOfRoll(r.faces, r.sources, r.baseCount) : null;
+  }
+
+  /** Danno del lancio corrente con un dato vettore mossa (anteprima e
+   *  risoluzione usano lo STESSO calcolo, overflow e combo inclusi). */
+  public calcDamage(skillMod: Decimal, comboPower = 1): Decimal {
+    const r = this.lastRoll;
+    if (!r) return new Decimal(0);
+    const combo = comboOfRoll(r.faces, r.sources, r.baseCount).mult.pow(comboPower);
+    let dmg = this.pipeline.calculateTurnDamage(this.player.stats.str, r.faces, skillMod, combo);
+    if (r.overflowed) dmg = dmg.times(r.overflowMultiplier);
+    return dmg;
   }
 
   /** 3-4. WAIT_PLAYER_ACTION -> RESOLUTION (GDD §5.3-5.4) */
@@ -245,17 +294,8 @@ export class BattleEngine {
 
     const skill = SKILLS[skillId];
 
-    // Pipeline a 3 fasi (FLAT -> MULT -> skillMod) + middleware passivi
-    let damage = this.pipeline.calculateTurnDamage(
-      this.player.stats.str,
-      this.lastRoll.faces,
-      skill.skillMod
-    );
-
-    // Overflow del Dopamine Cap: moltiplicatore esponenziale forzato
-    if (this.lastRoll.overflowed) {
-      damage = damage.times(this.lastRoll.overflowMultiplier);
-    }
+    // Pipeline a 3 fasi (FLAT -> MULT -> skillMod) + combinazione + middleware
+    const damage = this.calcDamage(skill.skillMod, skill.comboPower);
 
     if (skill.convertsToShield) {
       // Scudo del Goblin: il danno diventa Punti Scudo temporanei

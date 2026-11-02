@@ -31,6 +31,8 @@ interface ActiveDie {
   /** Indice (0-5) della faccia BoxGeometry che deve finire in alto */
   targetFaceIndex: number;
   settled: boolean;
+  /** posizione del dado nel lancio (stesso indice di faces/sources) */
+  index: number;
 }
 
 export class DiceWorld {
@@ -118,12 +120,15 @@ export class DiceWorld {
    * assestati: è il resolver perfetto per il Visual Blocking
    * Callback di `onDicesRolled` (GDD §5.2).
    */
-  public throwDice(dice: GoblinDie[], results: DieFace[]): Promise<void> {
-    this.clearDice();
+  /** `keep`: indici dei dadi da lasciare fermi dov'erano (rilancio parziale) */
+  public throwDice(dice: GoblinDie[], results: DieFace[], keep?: ReadonlySet<number>): Promise<void> {
+    if (keep) this.clearDice(d => !keep.has(d.index));
+    else this.clearDice();
 
     dice.forEach((die, i) => {
       const face = results[i];
       if (!face) return;
+      if (keep?.has(i) && this.active.some(a => a.index === i)) return;
 
       // La faccia target è l'indice della faccia estratta nel dado logico
       const targetFaceIndex = Math.max(0, die.faces.indexOf(face)) % 6;
@@ -157,7 +162,7 @@ export class DiceWorld {
       );
       this.world.addBody(body);
 
-      this.active.push({ mesh, body, textures, targetFaceIndex, settled: false });
+      this.active.push({ mesh, body, textures, targetFaceIndex, settled: false, index: i });
     });
 
     // Rete di sicurezza anti-softlock: se la fisica non si assesta entro il
@@ -259,14 +264,16 @@ export class DiceWorld {
     this.renderer.render(this.scene, this.camera);
   };
 
-  private clearDice(): void {
+  private clearDice(shouldRemove: (d: ActiveDie) => boolean = () => true): void {
+    const kept: ActiveDie[] = [];
     for (const die of this.active) {
+      if (!shouldRemove(die)) { kept.push(die); continue; }
       this.scene.remove(die.mesh);
       die.mesh.geometry.dispose();
       die.textures.dispose(); // rilascio GPU esplicito
       this.world.removeBody(die.body);
     }
-    this.active = [];
+    this.active = kept;
   }
 
   public resize(width: number, height: number): void {

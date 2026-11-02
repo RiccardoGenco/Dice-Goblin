@@ -37,7 +37,7 @@ describe('Regressioni dalla revisione di novembre', () => {
     // forza un reroll sull'ultima faccia (spesso un extra oltre la lunghezza della borsa)
     const idx = faces.length - 1;
     const src = sources[idx];
-    engine.rerollDice([idx], SkillId.TIRO_TRUCCATO);
+    expect(engine.rerollSelected([idx])).toBe(true);
     expect(src.faces).toContain(engine.lastRoll.faces[idx]);
     expect(engine.state).toBe(BattleState.WAIT_PLAYER_ACTION);
   });

@@ -7,7 +7,7 @@
   import { MAX_EQUIPMENT_SLOTS } from '@core/equipment';
   import {
     playerView, enemyView, intentView, battleState, rolledChips,
-    overflowActive, uiMode, battleResult, logLines, equipVersion,
+    overflowActive, rerollsLeft, diceBusy, comboView, battleResult, logLines, equipVersion,
     uiPhase, goldView, runLabel, shopOffers, shopSpecial, rewardBanner,
     crossroadSpecial, forgeSpecial, forgeOpsLeft, forgeVersion,
     chainView, skillPreview, rollNonce, runProgress
@@ -86,14 +86,11 @@
     void gm?.newRun();
   }
 
-  /* ---- Tastiera: 1-4 skill, Invio conferma reroll, Esc annulla ---- */
+  /* ---- Tastiera: 1-4 skill, R rilancia i dadi selezionati, Esc deseleziona ---- */
   function onKey(e: KeyboardEvent): void {
     if ($uiPhase !== 'battle' || e.ctrlKey || e.metaKey || e.altKey) return;
-    if ($uiMode === 'reroll') {
-      if (e.key === 'Enter') { e.preventDefault(); confirmReroll(); }
-      else if (e.key === 'Escape') { e.preventDefault(); cancelReroll(); }
-      return;
-    }
+    if (e.key === 'r' || e.key === 'R') { e.preventDefault(); doReroll(); return; }
+    if (e.key === 'Escape') { selectedChips = []; return; }
     const idx = Number(e.key) - 1;
     if (idx >= 0 && idx < SKILL_ORDER.length && canAct) {
       e.preventDefault();
@@ -105,10 +102,13 @@
     { id: SkillId.SGANCIO_BRUTALE, icon: '💥', hint: 'Danno ×1.5' },
     { id: SkillId.SCUDO_GOBLIN,    icon: '🛡️', hint: 'Danno → Scudo' },
     { id: SkillId.SPUTO_ACIDO,     icon: '☠️', hint: '20% Veleno ×3 turni' },
-    { id: SkillId.TIRO_TRUCCATO,   icon: '🎲', hint: '×0.5 ma 2 reroll' }
+    { id: SkillId.COLPO_COMBO,     icon: '🎯', hint: '×0.8, combo al quadrato' }
   ];
 
-  $: canAct = $battleState === BattleState.WAIT_PLAYER_ACTION && $uiMode === 'idle' && !$battleResult;
+  $: canAct = $battleState === BattleState.WAIT_PLAYER_ACTION && !$diceBusy && !$battleResult;
+  $: canReroll = canAct && $rerollsLeft > 0;
+  /* nuovo lancio: la selezione riparte da zero */
+  $: if ($rollNonce >= 0) selectedChips = [];
 
   function useSkill(id: SkillId): void {
     selectedChips = [];
@@ -116,23 +116,15 @@
   }
 
   function toggleChip(i: number): void {
-    if ($uiMode !== 'reroll') return;
-    if (selectedChips.includes(i)) {
-      selectedChips = selectedChips.filter(c => c !== i);
-    } else if (selectedChips.length < 2) {
-      selectedChips = [...selectedChips, i];
-    }
+    if (!canReroll) return;
+    selectedChips = selectedChips.includes(i) ? selectedChips.filter(c => c !== i) : [...selectedChips, i];
   }
 
-  function confirmReroll(): void {
+  function doReroll(): void {
+    if (!canReroll || selectedChips.length === 0) return;
     const chosen = selectedChips;
     selectedChips = [];
-    void gm?.confirmRerolls(chosen);
-  }
-
-  function cancelReroll(): void {
-    selectedChips = [];
-    gm?.cancelReroll();
+    void gm?.rerollDice(chosen);
   }
 </script>
 
@@ -196,24 +188,31 @@
             class="chip {chip.cssClass}"
             style="--i:{i}"
             class:selected={selectedChips.includes(i)}
-            class:selectable={$uiMode === 'reroll'}
+            class:selectable={canReroll}
             on:click={() => toggleChip(i)}
-          >{chip.text}</button>
+          >{chip.text}{#if chip.pip}<sup class="cpip">{chip.pip}</sup>{/if}</button>
         {/each}
       {/key}
     </div>
-    {#if $uiMode === 'reroll'}
-      <div class="reroll-hint">
-        Scegli fino a 2 dadi da rilanciare ({selectedChips.length}/2)
-        <button class="mini" on:click={confirmReroll}>✔ Conferma <kbd>Invio</kbd></button>
-        <button class="mini" on:click={cancelReroll}>✖ Annulla <kbd>Esc</kbd></button>
-      </div>
-    {:else if $chainView && $battleState === BattleState.WAIT_PLAYER_ACTION}
-      <div class="formula" class:hot={$chainView.tier >= 2}>
-        {#if $chainView.multCount > 0}<span class="f-mult">×{$chainView.mult}</span>{/if}
-        <span class="f-pow"><small>Potenza</small> <b>{$chainView.power}</b></span>
-      </div>
-    {/if}
+    <div class="side">
+      {#if $comboView && $battleState === BattleState.WAIT_PLAYER_ACTION}
+        <div class="combo t{$comboView.tier}" title="Combinazione dei numeri sui dadi">
+          <small>Combo</small> <b>{$comboView.name}</b>
+          {#if $comboView.tier > 0}<span class="c-mult">×{$comboView.mult}</span>{/if}
+        </div>
+      {/if}
+      {#if $chainView && $battleState === BattleState.WAIT_PLAYER_ACTION}
+        <div class="formula" class:hot={$chainView.tier >= 2}>
+          {#if $chainView.multCount > 0}<span class="f-mult">×{$chainView.mult}</span>{/if}
+          <span class="f-pow"><small>Potenza</small> <b>{$chainView.power}</b></span>
+        </div>
+      {/if}
+      <button class="reroll" disabled={!canReroll || selectedChips.length === 0} on:click={doReroll}
+        title="Seleziona i dadi da rilanciare, gli altri restano">
+        🎲 Rilancia {selectedChips.length > 0 ? `(${selectedChips.length})` : ''}
+        <small>{$rerollsLeft} rimasti · <kbd>R</kbd></small>
+      </button>
+    </div>
   </section>
 
   <!-- ===== Dock: la "mano" di 4 skill + zaino ===== -->
@@ -459,6 +458,7 @@
   .chip.multiplier { border-color: var(--pink); color: var(--pink); font-weight: 700; box-shadow: 0 0 10px rgba(255,92,138,0.55); }
   .chip.buff { border-color: var(--green); color: var(--green); }
   .chip.recursive { border-color: var(--cyan); color: var(--cyan); }
+  .cpip { font-size: 11px; font-weight: 700; margin-left: 4px; padding: 0 4px; border-radius: 8px; background: #e8e4f4; color: #16131f; vertical-align: top; }
   .chip.selectable { cursor: pointer; }
   .chip.selected { outline: 3px solid #ffb84c; outline-offset: 2px; }
   .formula { display: flex; gap: 18px; align-items: baseline; white-space: nowrap; }
@@ -466,6 +466,19 @@
   .formula.hot .f-mult { font-size: 34px; color: #ffb84c; text-shadow: 0 0 14px rgba(255,150,0,0.85); }
   .f-pow small { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 2px; }
   .f-pow b { color: var(--gold); font-size: 28px; font-weight: 700; }
+  .side { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; justify-content: flex-end; }
+  .combo { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; color: var(--muted); }
+  .combo small { font-size: 12px; text-transform: uppercase; letter-spacing: 2px; }
+  .combo b { font-size: 20px; color: var(--text, #e8e4f4); }
+  .combo .c-mult { font-weight: 700; font-size: 22px; color: var(--cyan); }
+  .combo.t2 b, .combo.t2 .c-mult { color: #ffb84c; }
+  .combo.t3 b, .combo.t3 .c-mult, .combo.t4 b, .combo.t4 .c-mult { color: var(--pink); text-shadow: 0 0 10px rgba(255,92,138,0.6); }
+  .reroll {
+    background: #1f1a33; border: 2px solid #ffb84c; color: #ffe2a8; border-radius: 10px;
+    padding: 6px 14px; font: inherit; font-weight: 700; cursor: pointer; display: flex; flex-direction: column; align-items: center; line-height: 1.1;
+  }
+  .reroll small { font-weight: 400; font-size: 11px; color: var(--muted); }
+  .reroll:disabled { opacity: 0.4; cursor: default; border-color: #4a4466; }
   .reroll-hint { font-size: 14px; color: #ffb84c; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
   /* ---- Dock: la mano di carte ---- */
@@ -515,6 +528,8 @@
     .formula.hot .f-mult { font-size: 24px; }
     .f-pow b { font-size: 22px; }
     .formula { justify-content: space-between; }
+    .side { justify-content: space-between; gap: 8px; }
+    .combo b { font-size: 16px; }
     .dock { grid-template-columns: 1fr; }
     .hand { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .card { padding: 8px 6px 6px; flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 2px 8px; }
