@@ -51,7 +51,7 @@ export interface EffectSummary {
 }
 
 /** Somma gli effetti di tutte le facce uscite e ricava le reazioni */
-export function summarizeEffects(faces: readonly DieFace[]): EffectSummary {
+export function summarizeEffects(faces: readonly DieFace[], fireFactor = FIRE_DAMAGE_FACTOR): EffectSummary {
   let poison = new Decimal(0);
   let shield = new Decimal(0);
   let fire = new Decimal(0);
@@ -59,7 +59,7 @@ export function summarizeEffects(faces: readonly DieFace[]): EffectSummary {
     if (!f.effect) continue;
     if (f.effect === 'veleno') poison = poison.plus(f.value);
     else if (f.effect === 'scudo') shield = shield.plus(f.value);
-    else if (f.effect === 'fuoco') fire = fire.plus(f.value.times(FIRE_DAMAGE_FACTOR));
+    else if (f.effect === 'fuoco') fire = fire.plus(f.value.times(fireFactor));
   }
   const reactions: ReactionMeta[] = [];
   if (poison.gt(0) && fire.gt(0)) reactions.push(REACTIONS['vapori']);

@@ -3,6 +3,7 @@ import { GoblinDie } from './GoblinDie';
 import { scaleShopCost } from './BattleEngine';
 import { CombatantStats, FaceType, RNG, defaultRNG } from './types';
 import { DieBlueprint, createDieFromBlueprint } from './diceCatalog';
+import { EquipmentItem, ITEMS, ITEM_RARITY_META, ItemRarity } from './equipment';
 
 /* ============================================================
  * Shop — Economia della run (GDD §4.2 + MVP §1)
@@ -25,7 +26,8 @@ export type OfferKind =
   | 'stat-str-major' // esclusiva del Mercante Reale
   | 'stat-vit'
   | 'upgrade-face'
-  | 'new-die';
+  | 'new-die'
+  | 'item';
 
 export interface ShopOffer {
   id: string;
@@ -39,6 +41,9 @@ export interface ShopOffer {
   faceIndex?: number;
   /** Riferimento per new-die */
   blueprintId?: string;
+  /** Riferimento per item */
+  itemId?: string;
+  rarity?: ItemRarity;
 }
 
 const BASE_COST: Record<OfferKind, number> = {
@@ -46,8 +51,19 @@ const BASE_COST: Record<OfferKind, number> = {
   'stat-str-major': 60,
   'stat-vit': 20,
   'upgrade-face': 30,
-  'new-die': 80
+  'new-die': 80,
+  'item': 0 // il prezzo dipende dalla rarità (ITEM_BASE_COST)
 };
+
+export const ITEM_BASE_COST: Record<ItemRarity, number> = {
+  'comune': 30,
+  'non-comune': 55,
+  'raro': 100
+};
+/** Quota del prezzo che si recupera rivendendo un oggetto */
+export const SELL_RATIO = 0.5;
+/** Oggetti in vendita a ogni visita */
+export const ITEMS_PER_VISIT = 2;
 
 export class Shop {
   constructor(private readonly rng: RNG = defaultRNG) {}
@@ -65,6 +81,36 @@ export class Shop {
     return c.floor();
   }
 
+  public itemCost(item: EquipmentItem, level: number, purchases: number, special = false): Decimal {
+    let c = scaleShopCost(new Decimal(ITEM_BASE_COST[item.rarity]), level)
+      .times(new Decimal(PURCHASE_INFLATION).pow(purchases));
+    if (special) c = c.times(SPECIAL_DISCOUNT);
+    return c.floor();
+  }
+
+  /** Quanto si incassa rivendendo l'oggetto (al prezzo del livello attuale, senza rincari) */
+  public sellValue(item: EquipmentItem, level: number): Decimal {
+    return scaleShopCost(new Decimal(ITEM_BASE_COST[item.rarity]), level).times(SELL_RATIO).floor();
+  }
+
+  /** Pesca oggetti non posseduti, pesati per rarità (più rari dal Mercante Reale) */
+  private pickItems(count: number, owned: readonly string[], special: boolean): EquipmentItem[] {
+    const pool = ITEMS.filter(i => !owned.includes(i.id));
+    const picked: EquipmentItem[] = [];
+    while (picked.length < count && pool.length > 0) {
+      const w = (i: EquipmentItem) => ITEM_RARITY_META[i.rarity].weight * (special && i.rarity === 'raro' ? 3 : 1);
+      const total = pool.reduce((a, i) => a + w(i), 0);
+      let r = this.rng.next() * total;
+      let idx = 0;
+      for (; idx < pool.length - 1; idx++) {
+        r -= w(pool[idx]!);
+        if (r < 0) break;
+      }
+      picked.push(pool.splice(idx, 1)[0]!);
+    }
+    return picked;
+  }
+
   /** Genera le offerte della visita. Con special=true (dopo una
    *  boss fight) applica lo sconto del Mercante Reale e aggiunge
    *  l'offerta premium esclusiva. */
@@ -73,7 +119,8 @@ export class Shop {
     purchases: number,
     bag: GoblinDie[],
     unlockedBlueprints: DieBlueprint[],
-    special = false
+    special = false,
+    ownedItemIds: readonly string[] = []
   ): ShopOffer[] {
     const offers: ShopOffer[] = [];
 
@@ -140,6 +187,19 @@ export class Shop {
         description: available.description,
         cost: this.cost('new-die', level, purchases, special),
         blueprintId: available.id
+      });
+    }
+
+    for (const item of this.pickItems(ITEMS_PER_VISIT, ownedItemIds, special)) {
+      offers.push({
+        id: `offer-item-${item.id}`,
+        kind: 'item',
+        icon: item.icon,
+        label: item.name,
+        description: item.description,
+        cost: this.itemCost(item, level, purchases, special),
+        itemId: item.id,
+        rarity: item.rarity
       });
     }
 

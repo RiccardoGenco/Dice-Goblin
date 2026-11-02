@@ -2,7 +2,8 @@ import Decimal from 'break_infinity.js';
 import { GoblinDie } from './GoblinDie';
 import { DamagePipeline } from './DamagePipeline';
 import { SKILLS } from './skills';
-import { EffectSummary, POISON_BASE_TURNS, SPORE_EXTRA_TURNS, summarizeEffects } from './effects';
+import { ItemCtx, ItemMods, buildCtx, neutralMods } from './equipment';
+import { EffectSummary, FIRE_DAMAGE_FACTOR, POISON_BASE_TURNS, SPORE_EXTRA_TURNS, summarizeEffects } from './effects';
 import {
   BALANCE,
   BattleState,
@@ -99,6 +100,10 @@ export class BattleEngine {
   private carried: { faces: DieFace[]; sources: GoblinDie[]; pending: number } | null = null;
   /** Rimbalzo attivo della Parata durante la fase nemica */
   private reflectRatio: Decimal | null = null;
+  /** Regole modificate dagli oggetti equipaggiati (le imposta chi equipaggia) */
+  public mods: ItemMods = neutralMods();
+  private ctxSkill: SkillId | null = null;
+  private rerollsMax = 0;
   /** Il lancio corrente arriva da una Carica: danno ×CHARGE_BONUS */
   private chargedRoll = false;
   public get charged(): boolean { return this.chargedRoll; }
@@ -185,7 +190,8 @@ export class BattleEngine {
       });
     }
 
-    this.rerollsLeft = BALANCE.REROLLS_PER_TURN;
+    this.rerollsMax = BALANCE.REROLLS_PER_TURN + this.mods.extraRerolls;
+    this.rerollsLeft = this.rerollsMax;
     await this.setState(BattleState.WAIT_PLAYER_ACTION);
   }
 
@@ -284,7 +290,23 @@ export class BattleEngine {
 
   /** Effetti e reazioni delle facce del lancio corrente */
   public getEffects(): EffectSummary {
-    return summarizeEffects(this.lastRoll?.faces ?? []);
+    return summarizeEffects(this.lastRoll?.faces ?? [], FIRE_DAMAGE_FACTOR + this.mods.fireFactor);
+  }
+
+  /** Il contesto che gli oggetti leggono per le loro condizioni */
+  public itemCtx(): ItemCtx {
+    const r = this.lastRoll;
+    return buildCtx({
+      skill: this.ctxSkill,
+      faces: r?.faces ?? [],
+      extraDice: r ? Math.max(0, r.faces.length - r.baseCount) : 0,
+      reactions: this.getEffects().reactions.length,
+      rerollsUsed: Math.max(0, this.rerollsMax - this.rerollsLeft),
+      hpRatio: this.player.hp.div(Decimal.max(this.player.maxHp, 1)).toNumber(),
+      enemyPoisoned: this.enemy.poison.turnsLeft > 0,
+      enemyShielded: this.enemy.shield.gt(0),
+      charged: this.chargedRoll
+    });
   }
 
   /** Stato dell'overflow del lancio corrente */
@@ -295,12 +317,18 @@ export class BattleEngine {
 
   /** Danno del lancio corrente con un dato vettore mossa (anteprima e
    *  risoluzione usano lo STESSO calcolo, overflow incluso). */
-  public calcDamage(skillMod: Decimal): Decimal {
+  public calcDamage(skillMod: Decimal, skillId: SkillId | null = null): Decimal {
     const r = this.lastRoll;
     if (!r) return new Decimal(0);
-    let dmg = this.pipeline.calculateTurnDamage(this.player.stats.str, r.faces, skillMod);
+    this.ctxSkill = skillId;
+    let dmg: Decimal;
+    try {
+      dmg = this.pipeline.calculateTurnDamage(this.player.stats.str, r.faces, skillMod);
+    } finally {
+      this.ctxSkill = null;
+    }
     if (r.overflowed) dmg = dmg.times(r.overflowMultiplier);
-    if (this.chargedRoll) dmg = dmg.times(BALANCE.CHARGE_BONUS);
+    if (this.chargedRoll) dmg = dmg.times(BALANCE.CHARGE_BONUS + this.mods.chargeBonus);
     return dmg;
   }
 
@@ -314,7 +342,7 @@ export class BattleEngine {
     const skill = SKILLS[skillId];
 
     // Pipeline a 3 fasi (FLAT -> MULT -> skillMod) + middleware passivi
-    const damage = this.calcDamage(skill.skillMod);
+    const damage = this.calcDamage(skill.skillMod, skillId);
     this.reflectRatio = null;
 
     if (skill.carriesRoll) {
@@ -326,7 +354,7 @@ export class BattleEngine {
       if (skill.convertsToShield) {
         // Parata: il danno diventa Punti Scudo temporanei
         this.player.shield = this.player.shield.plus(damage);
-        this.reflectRatio = skill.reflectRatio;
+        this.reflectRatio = skill.reflectRatio ? skill.reflectRatio.plus(this.mods.reflectBonus) : null;
         await this.emitEvent('onShieldGained', { amount: damage });
       }
       if (skill.dealsDamage) {
@@ -344,7 +372,7 @@ export class BattleEngine {
           .times(Decimal.max(this.player.stats.int, 1));
         const active = this.enemy.poison.turnsLeft > 0;
         const perTurn = active ? this.enemy.poison.perTurn.plus(add) : add;
-        const turns = Math.max(this.enemy.poison.turnsLeft, skill.poisonTurns);
+        const turns = Math.max(this.enemy.poison.turnsLeft, skill.poisonTurns) + this.mods.poisonTurns;
         this.enemy.poison = { perTurn, turnsLeft: turns };
         await this.emitEvent('onPoisonApplied', { perTurn: add, turns });
       }
@@ -360,16 +388,19 @@ export class BattleEngine {
   private async applyFaceEffects(): Promise<void> {
     const fx = this.getEffects();
     const has = (id: string) => fx.reactions.some(r => r.id === id);
+    const shield = fx.shield.times(this.mods.shieldMult);
+    const react = this.mods.reactionMult;
 
-    if (fx.shield.gt(0)) {
-      this.player.shield = this.player.shield.plus(fx.shield);
-      await this.emitEvent('onShieldGained', { amount: fx.shield });
+    if (shield.gt(0)) {
+      this.player.shield = this.player.shield.plus(shield);
+      await this.emitEvent('onShieldGained', { amount: shield });
     }
     if (fx.poison.gt(0)) {
       const perTurn = this.enemy.poison.turnsLeft > 0
         ? this.enemy.poison.perTurn.plus(fx.poison)
         : fx.poison;
-      const turns = Math.max(this.enemy.poison.turnsLeft, POISON_BASE_TURNS) + (has('spore') ? SPORE_EXTRA_TURNS : 0);
+      const turns = Math.max(this.enemy.poison.turnsLeft, POISON_BASE_TURNS)
+        + (has('spore') ? SPORE_EXTRA_TURNS : 0) + this.mods.poisonTurns;
       this.enemy.poison = { perTurn, turnsLeft: turns };
       await this.emitEvent('onPoisonApplied', { perTurn: fx.poison, turns });
     }
@@ -378,13 +409,14 @@ export class BattleEngine {
       await this.emitEvent('onDamageDealt', { target: 'enemy', amount: fx.fire });
     }
     if (has('vapori')) {
-      const burst = this.enemy.poison.perTurn;
+      const burst = this.enemy.poison.perTurn.times(react);
       this.enemy.hp = this.enemy.hp.minus(burst);
       await this.emitEvent('onReaction', { id: 'vapori', amount: burst });
     }
     if (has('scudo-ardente')) {
-      this.enemy.hp = this.enemy.hp.minus(fx.shield);
-      await this.emitEvent('onReaction', { id: 'scudo-ardente', amount: fx.shield });
+      const burn = shield.times(react);
+      this.enemy.hp = this.enemy.hp.minus(burn);
+      await this.emitEvent('onReaction', { id: 'scudo-ardente', amount: burn });
     }
     if (has('spore')) {
       await this.emitEvent('onReaction', { id: 'spore', amount: new Decimal(SPORE_EXTRA_TURNS) });

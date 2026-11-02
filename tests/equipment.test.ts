@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import Decimal from 'break_infinity.js';
 import { formatBigNumber } from '../src/core/format';
-import { EquipmentManager, DEMO_ITEMS, MAX_EQUIPMENT_SLOTS } from '../src/core/equipment';
+import { EquipmentManager, DEMO_ITEMS, MAX_EQUIPMENT_SLOTS, findItem } from '../src/core/equipment';
 import { DamagePipeline } from '../src/core/DamagePipeline';
 
 describe('formatBigNumber (GDD §6.1)', () => {
@@ -36,8 +36,8 @@ describe('EquipmentManager — regola dei 5 slot (MVP §4)', () => {
     const pipeline = new DamagePipeline();
 
     // Anello (+8 PRE_ADD) e Idolo (×1.5 MULT): (10+8)*1.5 = 27
-    eq.equip(DEMO_ITEMS[0]!); // anello-bruto
-    eq.equip(DEMO_ITEMS[3]!); // idolo-goblin
+    eq.equip(findItem('anello-bruto')!);
+    eq.equip(findItem('idolo-goblin')!);
     eq.syncPipeline(pipeline);
     expect(
       pipeline.calculateTurnDamage(new Decimal(10), [], new Decimal(1)).toNumber()
@@ -52,10 +52,11 @@ describe('EquipmentManager — regola dei 5 slot (MVP §4)', () => {
   });
 
   it("il danno non dipende dall'ordine di equipaggiamento", () => {
+    const ids = ['anello-bruto', 'zanna-ricurva', 'lente-avida', 'idolo-goblin', 'talismano-caos'];
     const dmg = (order: number[]) => {
       const eq = new EquipmentManager();
       const p = new DamagePipeline();
-      order.forEach(i => eq.equip(DEMO_ITEMS[i]!));
+      order.forEach(i => eq.equip(findItem(ids[i]!)!));
       eq.syncPipeline(p);
       return p.calculateTurnDamage(new Decimal(10), [], new Decimal(1)).toNumber();
     };

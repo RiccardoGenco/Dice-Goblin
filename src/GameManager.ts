@@ -1,11 +1,12 @@
 import Decimal from 'break_infinity.js';
+import { get } from 'svelte/store';
 import { BattleEngine, Combatant } from '@core/BattleEngine';
 import { GoblinDie } from '@core/GoblinDie';
 import { formatBigNumber } from '@core/format';
 import { summarizeChain, multTier, magnitudeOf } from '@core/chain';
 import { SKILLS } from '@core/skills';
 import { EFFECT_META, REACTIONS, ReactionId } from '@core/effects';
-import { EquipmentManager, DEMO_ITEMS, EquipmentItem } from '@core/equipment';
+import { EquipmentManager, findItem, EquipmentItem } from '@core/equipment';
 import {
   BALANCE,
   BattleState,
@@ -91,7 +92,6 @@ export class GameManager {
   private engine!: BattleEngine;
   private readonly diceWorld: DiceWorld;
   public readonly equipment = new EquipmentManager();
-  public readonly inventory: EquipmentItem[] = DEMO_ITEMS;
 
   /** Statistiche PERSISTENTI del giocatore: passate per riferimento
    *  all'engine, così i BUFF_STR conquistati sopravvivono tra le
@@ -138,7 +138,7 @@ export class GameManager {
       this.playerStats.lck = saved.playerStats.lck;
       this.bag = saved.bag;
       for (const id of saved.equipmentIds) {
-        const item = DEMO_ITEMS.find(i => i.id === id);
+        const item = findItem(id);
         if (item) this.equipment.equip(item);
       }
       pushLog('💾 Run ripristinata dal salvataggio');
@@ -202,7 +202,7 @@ export class GameManager {
     };
 
     this.engine = new BattleEngine(this.playerStats, enemyStats, this.bag);
-    this.equipment.syncPipeline(this.engine.pipeline);
+    this.syncEquipment();
     this.registerListeners();
     this.pickEnemyLook();
     pushLog(
@@ -247,13 +247,13 @@ export class GameManager {
   private refreshPreview(): void {
     const faces = this.lastFaces;
     if (faces.length === 0) return;
-    const calc = (mod: Decimal) => this.engine.calcDamage(mod);
+    const calc = (mod: Decimal, id: SkillId | null = null) => this.engine.calcDamage(mod, id);
 
     const fmt = formatBigNumber;
-    const sgancio = calc(SKILLS[SkillId.SGANCIO_BRUTALE].skillMod);
-    const parata = calc(SKILLS[SkillId.PARATA].skillMod);
+    const sgancio = calc(SKILLS[SkillId.SGANCIO_BRUTALE].skillMod, SkillId.SGANCIO_BRUTALE);
+    const parata = calc(SKILLS[SkillId.PARATA].skillMod, SkillId.PARATA);
     const bavaDef = SKILLS[SkillId.BAVA];
-    const bavaBase = calc(bavaDef.skillMod);
+    const bavaBase = calc(bavaDef.skillMod, SkillId.BAVA);
     const bava = bavaBase.times(bavaDef.poisonRatio ?? 0).times(Decimal.max(this.engine.player.stats.int, 1));
 
     skillPreview.set({
@@ -526,24 +526,31 @@ export class GameManager {
 
   /* ---------------- Equipaggiamento ---------------- */
 
-  public equipItem(item: EquipmentItem): void {
-    if (this.equipment.equip(item)) {
-      this.equipment.syncPipeline(this.engine.pipeline);
-      pushLog(`${item.icon} Equipaggiato: ${item.name}`);
-    } else {
-      pushLog(`✋ Slot pieni (o duplicato): scarta qualcosa prima!`);
-    }
-    equipVersion.update(v => v + 1);
-    this.autosave();
+  /** Allinea il motore agli oggetti equipaggiati (danno condizionale e regole) */
+  private syncEquipment(): void {
+    this.equipment.syncPipeline(this.engine.pipeline, () => this.engine.itemCtx());
+    this.engine.mods = this.equipment.mods();
   }
 
-  public unequipSlot(slotIndex: number): void {
-    const removed = this.equipment.unequip(slotIndex);
-    if (removed) {
-      this.equipment.syncPipeline(this.engine.pipeline);
-      pushLog(`🗑️ Rimosso: ${removed.name}`);
-    }
+  /** Valore di rivendita dell'oggetto nello slot, o null se vuoto */
+  public sellValueOf(slotIndex: number): Decimal | null {
+    const item = this.equipment.slots[slotIndex];
+    return item ? this.shop.sellValue(item, this.run.level) : null;
+  }
+
+  /** Vende l'oggetto di uno slot: solo dal mercante */
+  public sellSlot(slotIndex: number): void {
+    if (get(uiPhase) !== 'shop') return;
+    const item = this.equipment.slots[slotIndex];
+    if (!item) return;
+    const value = this.shop.sellValue(item, this.run.level);
+    this.equipment.unequip(slotIndex);
+    this.run.addGold(value);
+    this.syncEquipment();
+    pushLog(`💰 Venduto: ${item.name} (+${formatBigNumber(value)})`);
     equipVersion.update(v => v + 1);
+    this.publishOffers();
+    this.refreshRunHeader();
     this.autosave();
   }
 
@@ -556,7 +563,8 @@ export class GameManager {
       this.run.state.purchases,
       this.bag,
       available,
-      special
+      special,
+      this.equipment.ownedIds
     );
     shopSpecial.set(special);
     this.publishOffers();
@@ -573,7 +581,9 @@ export class GameManager {
         label: o.label,
         description: o.description,
         cost: formatBigNumber(o.cost),
-        affordable: gold.gte(o.cost)
+        affordable: gold.gte(o.cost) && !(o.kind === 'item' && this.equipment.freeSlots === 0),
+        ...(o.rarity ? { rarity: o.rarity } : {}),
+        ...(o.kind === 'item' && this.equipment.freeSlots === 0 ? { note: 'Slot pieni: vendi un oggetto' } : {})
       }))
     );
   }
@@ -584,6 +594,10 @@ export class GameManager {
   public buyOffer(offerId: string): void {
     const offer = this.currentOffers.find(o => o.id === offerId);
     if (!offer) return;
+    if (offer.kind === 'item' && this.equipment.freeSlots === 0) {
+      pushLog('✋ Slot pieni: vendi un oggetto prima di comprarne un altro');
+      return;
+    }
     if (!this.run.spendGold(offer.cost)) {
       pushLog(`✋ Oro insufficiente per ${offer.label}`);
       return;
@@ -593,6 +607,12 @@ export class GameManager {
       bag: this.bag,
       blueprints: UNLOCKABLE_DICE
     });
+    if (offer.kind === 'item') {
+      const item = findItem(offer.itemId ?? '');
+      if (item) this.equipment.equip(item);
+      this.syncEquipment();
+      equipVersion.update(v => v + 1);
+    }
     pushLog(`${offer.icon} Acquistato: ${offer.label}`);
     this.currentOffers = this.currentOffers.filter(o => o.id !== offerId);
     this.publishOffers();

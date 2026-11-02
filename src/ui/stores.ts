@@ -68,6 +68,8 @@ export interface ShopOfferView {
   description: string;
   cost: string;
   affordable: boolean;
+  rarity?: string;
+  note?: string;
 }
 
 /** 'battle' = combattimento; 'crossroad' = bivio a due porte;

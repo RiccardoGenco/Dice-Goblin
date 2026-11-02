@@ -5,6 +5,7 @@
   import { SKILLS } from '@core/skills';
   import { BattleState, FaceType, SkillId } from '@core/types';
   import { MAX_EQUIPMENT_SLOTS } from '@core/equipment';
+  import { formatBigNumber } from '@core/format';
   import {
     playerView, enemyView, intentView, battleState, rolledChips,
     overflowActive, rerollsLeft, diceBusy, effectsView, battleResult, logLines, equipVersion,
@@ -166,8 +167,7 @@
           {@const item = gm?.equipment.slots[i] ?? null}
           <button
             class="relic" class:filled={item}
-            title={item ? `${item.name} — ${item.description} (clic: rimuovi)` : 'Slot vuoto'}
-            on:click={() => item && gm?.unequipSlot(i)}
+            title={item ? `${item.name} — ${item.description}` : 'Slot vuoto: compra oggetti dal mercante'}
           >{item ? item.icon : ''}</button>
         {/each}
       </div>
@@ -242,17 +242,6 @@
         </button>
       {/each}
     </div>
-    {#key $equipVersion}
-      <div class="bag">
-        <span class="bag-title">Zaino</span>
-        <div class="bag-items">
-          {#each gm?.inventory ?? [] as item}
-            <button class="inv-item" title={`${item.name} — ${item.description} (clic: equipaggia)`}
-              on:click={() => gm?.equipItem(item)}>{item.icon}</button>
-          {/each}
-        </div>
-      </div>
-    {/key}
   </footer>
 
   <!-- ===== Overlay Shop (tra un incontro e l'altro) ===== -->
@@ -266,14 +255,14 @@
         <div class="offers">
           {#each $shopOffers as offer (offer.id)}
             <button
-              class="offer"
+              class="offer {offer.rarity ?? ''}"
               disabled={!offer.affordable}
               title={offer.description}
               on:click={() => gm?.buyOffer(offer.id)}
             >
               <span class="icon">{offer.icon}</span>
               <span class="label">{offer.label}</span>
-              <span class="hint">{offer.description}</span>
+              <span class="hint">{offer.description}{offer.note ? ` — ${offer.note}` : ''}</span>
               <span class="cost" class:too-expensive={!offer.affordable}>💰 {offer.cost}</span>
             </button>
           {/each}
@@ -281,6 +270,23 @@
             <p class="hint">Hai svuotato il banco del mercante!</p>
           {/if}
         </div>
+        {#key $equipVersion + ':' + $goldView}
+          <div class="sellrow" aria-label="I tuoi oggetti">
+            <span class="hint">I tuoi oggetti (clic: vendi a metà prezzo)</span>
+            <div class="slots">
+              {#each Array(MAX_EQUIPMENT_SLOTS) as _, i}
+                {@const it = gm?.equipment.slots[i] ?? null}
+                {@const val = gm?.sellValueOf(i) ?? null}
+                <button class="sellslot {it?.rarity ?? ''}" disabled={!it}
+                  title={it ? `${it.name} — ${it.description}` : 'Slot vuoto'}
+                  on:click={() => gm?.sellSlot(i)}>
+                  <span>{it ? it.icon : ''}</span>
+                  {#if val}<small>💰{formatBigNumber(val)}</small>{/if}
+                </button>
+              {/each}
+            </div>
+          </div>
+        {/key}
         <button class="skill" on:click={() => void gm?.leaveShop()}>⚔️ Prossimo incontro</button>
       </div>
     </div>
@@ -516,18 +522,6 @@
   .c-name { font-size: 15px; font-weight: 700; text-align: center; }
   .c-preview { font-size: 22px; font-weight: 700; color: var(--gold); text-align: center; min-height: 28px; }
   .c-hint { font-size: 12px; color: #c9b8e8; opacity: 0.85; text-align: center; }
-  .bag {
-    display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; min-width: 130px;
-    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
-  }
-  .bag-title { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; }
-  .bag-items { display: flex; flex-wrap: wrap; gap: 6px; max-width: 170px; }
-  .inv-item {
-    width: 34px; height: 34px; border-radius: 6px; font-size: 18px; cursor: pointer; padding: 0;
-    background: #1f3d2a; border: 1px solid #4cc94c;
-  }
-  .inv-item:hover { transform: translateY(-2px); }
-
   /* ---- Schermi stretti (telefono in verticale) ---- */
   @media (max-width: 760px) {
     .game { height: auto; min-height: 100%; grid-template-rows: auto minmax(260px, 40vh) auto auto; gap: 6px; padding: 6px 8px 8px; }
@@ -554,7 +548,6 @@
     .c-preview { font-size: 17px; min-height: 0; flex-basis: 100%; }
     .c-hint { display: none; }
     .key { display: none; }
-    .bag { flex-direction: row; align-items: center; padding: 4px 8px; }
     .feed { font-size: 11px; max-width: 70%; }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -596,6 +589,19 @@
   .offer .hint { grid-column: 2; font-size: 11px; opacity: 0.75; }
   .offer .cost { grid-row: span 2; color: #ffd84c; font-size: 12px; }
   .offer:disabled { opacity: 0.4; cursor: default; }
+  .offer.non-comune, .sellslot.non-comune { border-color: #4cc9f0; }
+  .offer.raro, .sellslot.raro { border-color: #c77dff; box-shadow: 0 0 8px #c77dff66; }
+  .offer.comune { border-color: #8a8a99; }
+  .sellrow { display: flex; flex-direction: column; gap: 6px; align-items: center; margin: 8px 0; }
+  .sellrow .slots { display: flex; gap: 6px; }
+  .sellslot {
+    width: 54px; height: 54px; border-radius: 8px; background: #1b1626; border: 1px dashed #4a4160;
+    color: inherit; cursor: pointer; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; font-size: 20px; padding: 0;
+  }
+  .sellslot small { font-size: 10px; color: #ffd84c; }
+  .sellslot:not(:disabled) { border-style: solid; }
+  .sellslot:disabled { cursor: default; opacity: 0.6; }
   .cost.too-expensive { color: #ff5c5c; }
   .shop-box.royal { border-color: #ffd84c; box-shadow: 0 0 24px rgba(255, 216, 76, 0.25); }
 
