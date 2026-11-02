@@ -7,6 +7,7 @@ import {
   freshRunState
 } from '../src/core/RunManager';
 import { Shop } from '../src/core/Shop';
+import { ITEMS } from '../src/core/equipment';
 import { SaveManager, memoryStorage, serializeDie, hydrateDie } from '../src/core/SaveManager';
 import { GoblinDie } from '../src/core/GoblinDie';
 import { UNLOCKABLE_DICE, createDieFromBlueprint } from '../src/core/diceCatalog';
@@ -94,16 +95,18 @@ describe('Shop — economia su curva esponenziale (GDD §4.2)', () => {
   it('i costi crescono sulla curva SHOP_COST_GROWTH', () => {
     const shop = new Shop(seededRNG(1));
     const bag = [new GoblinDie(Rarity.COMUNE, undefined, seededRNG(1))];
-    const cheap = shop.generateOffers(0, 0, bag, [])[0]!;
-    const dear = shop.generateOffers(8, 0, bag, [])[0]!;
+    const cheap = shop.generateOffers(0, 0, bag, []).find(o => o.kind === 'upgrade-face')!;
+    const dear = shop.generateOffers(8, 0, bag, []).find(o => o.kind === 'upgrade-face')!;
     expect(dear.cost.div(cheap.cost).toNumber()).toBeGreaterThan(BALANCE.SHOP_COST_GROWTH ** 7);
+    // il prezzo segue il bottino: stessa frazione a ogni livello
+    expect(BALANCE.SHOP_COST_GROWTH).toBe(BALANCE.GOLD_REWARD_GROWTH);
   });
 
-  it('gli acquisti ripetuti rincarano le offerte (+25% composto)', () => {
+  it('gli acquisti ripetuti rincarano le offerte (+3% composto)', () => {
     const shop = new Shop(seededRNG(1));
     const bag = [new GoblinDie(Rarity.COMUNE, undefined, seededRNG(1))];
-    const first = shop.generateOffers(0, 0, bag, [])[0]!;
-    const later = shop.generateOffers(0, 4, bag, [])[0]!;
+    const first = shop.generateOffers(0, 0, bag, []).find(o => o.kind === 'upgrade-face')!;
+    const later = shop.generateOffers(0, 4, bag, []).find(o => o.kind === 'upgrade-face')!;
     expect(later.cost.gt(first.cost)).toBe(true);
   });
 
@@ -119,30 +122,105 @@ describe('Shop — economia su curva esponenziale (GDD §4.2)', () => {
     expect(notOffered.some(o => o.blueprintId === golden.id)).toBe(false);
   });
 
-  it('Mercante Reale: sconto 30% e offerta premium esclusiva', () => {
+  it('Mercante Reale: sconto 30%, un oggetto in più e un raro garantito', () => {
     const shop = new Shop(seededRNG(1));
     const bag = [new GoblinDie(Rarity.COMUNE, undefined, seededRNG(1))];
     const normal = shop.generateOffers(0, 0, bag, []);
     const special = shop.generateOffers(0, 0, bag, [], true);
 
-    // L'offerta premium compare solo in modalità speciale
-    expect(normal.some(o => o.id === 'offer-str-major')).toBe(false);
-    expect(special.some(o => o.id === 'offer-str-major')).toBe(true);
-
-    // Stessa offerta base, prezzo scontato del 30%
-    const normStr = normal.find(o => o.id === 'offer-str')!;
-    const specStr = special.find(o => o.id === 'offer-str')!;
-    expect(specStr.cost.lt(normStr.cost)).toBe(true);
-    expect(specStr.cost.toNumber()).toBe(Math.floor(normStr.cost.toNumber() * 0.7));
+    const normF = normal.find(o => o.id === 'offer-face')!;
+    const specF = special.find(o => o.id === 'offer-face')!;
+    expect(Math.abs(specF.cost.toNumber() - normF.cost.toNumber() * 0.7)).toBeLessThanOrEqual(1);
+    expect(normal.filter(o => o.kind === 'item').length).toBe(3);
+    expect(special.filter(o => o.kind === 'item').length).toBe(4);
+    for (let i = 0; i < 20; i++) {
+      const s2 = new Shop(seededRNG(i + 10)).generateOffers(0, 0, bag, [], true);
+      expect(s2.some(o => o.kind === 'item' && o.rarity === 'raro')).toBe(true);
+    }
   });
 
-  it('stat-str compone il 30%: due acquisti = ×1.69', () => {
+  it('Forza e Vitalità non sono più in vendita', () => {
+    const shop = new Shop(seededRNG(2));
+    const bag = [new GoblinDie(Rarity.COMUNE, undefined, seededRNG(1))];
+    for (const special of [false, true]) {
+      const kinds = new Set(shop.generateOffers(5, 0, bag, [], special).map(o => o.kind));
+      expect([...kinds].every(k => ['upgrade-face', 'new-die', 'item', 'potion', 'elixir'].includes(k))).toBe(true);
+    }
+  });
+
+  it('la rarità offerta sale con la profondità della run', () => {
+    const bag = [new GoblinDie(Rarity.COMUNE, undefined, seededRNG(1))];
+    const rareShare = (level: number) => {
+      let rare = 0, total = 0;
+      for (let i = 0; i < 300; i++) {
+        for (const o of new Shop(seededRNG(i + 1)).generateOffers(level, 0, bag, [])) {
+          if (o.kind === 'item') { total++; if (o.rarity === 'raro') rare++; }
+        }
+      }
+      return rare / total;
+    };
+    const early = rareShare(0), late = rareShare(25);
+    expect(early).toBeLessThan(0.08);
+    expect(late).toBeGreaterThan(0.12);
+    expect(late).toBeGreaterThan(early * 3);
+  });
+
+  it('prezzi legati al bottino: un oggetto comune costa la stessa frazione a ogni livello', () => {
     const shop = new Shop(seededRNG(1));
-    const ctx = { stats: stats(), bag: [] as GoblinDie[], blueprints: UNLOCKABLE_DICE };
-    const offer = { id: 'x', kind: 'stat-str' as const, icon: '', label: '', description: '', cost: new Decimal(0) };
-    shop.apply(offer, ctx);
-    shop.apply(offer, ctx);
-    expect(ctx.stats.str.toNumber()).toBeCloseTo(10 * 1.3 * 1.3, 6);
+    const item = ITEMS.find(i => i.rarity === 'comune')!;
+    const frac = (L: number) => shop.itemCost(item, L, 0).toNumber() / RunManager.incomeAt(L).toNumber();
+    expect(frac(0)).toBeCloseTo(frac(20), 1);
+    // più alto il tier, più costa
+    const rare = ITEMS.find(i => i.rarity === 'raro')!;
+    expect(shop.itemCost(rare, 5, 0).gt(shop.itemCost(item, 5, 0))).toBe(true);
+  });
+
+  it('il rilancio del banco costa sempre di più nella stessa visita', () => {
+    const shop = new Shop(seededRNG(1));
+    const c0 = shop.rerollCost(5, 0).toNumber();
+    const c1 = shop.rerollCost(5, 1).toNumber();
+    const c3 = shop.rerollCost(5, 3).toNumber();
+    expect(c1).toBeGreaterThan(c0);
+    expect(c3).toBeGreaterThan(c1 * 2);
+  });
+
+  it('pozione ed elisir compaiono solo se si è feriti, e non rincarano con gli acquisti', () => {
+    const shop = new Shop(seededRNG(1));
+    expect(shop.generateServices(3, false, 1).length).toBe(0);
+    expect(shop.generateServices(3, false, 0.8).map(o => o.kind)).toEqual(['potion']);
+    expect(shop.generateServices(3, false, 0.4).map(o => o.kind)).toEqual(['potion', 'elixir']);
+    const bag = [new GoblinDie(Rarity.COMUNE, undefined, seededRNG(1))];
+    const a = shop.generateOffers(3, 0, bag, [], false, [], 0.5).find(o => o.kind === 'potion')!;
+    const b = shop.generateOffers(3, 30, bag, [], false, [], 0.5).find(o => o.kind === 'potion')!;
+    expect(b.cost.eq(a.cost)).toBe(true);
+  });
+
+  it('interesse: 8% dell\'oro non speso, con tetto', () => {
+    const run = new RunManager();
+    run.state.gold = new Decimal(100);
+    expect(run.applyInterest().toNumber()).toBe(8);
+    run.state.gold = new Decimal(1e9);
+    expect(run.applyInterest().toNumber()).toBe(Math.floor(RunManager.incomeAt(run.level).toNumber() * BALANCE.INTEREST_CAP));
+  });
+
+  it('primo negozio (dopo 1 vittoria): con il bottino si comprano almeno due cose', () => {
+    const run = new RunManager();
+    run.addGold(run.goldReward());
+    run.applyInterest();
+    run.advance();
+    const bag = [new GoblinDie(Rarity.COMUNE, undefined, seededRNG(1))];
+    const costs = new Shop(seededRNG(3)).generateOffers(run.shopLevel, run.state.purchases, bag, [])
+      .map(o => o.cost.toNumber()).sort((a, b) => a - b);
+    expect(costs[0]! + costs[1]!).toBeLessThanOrEqual(run.state.gold.toNumber());
+  });
+
+  it('spendGold(…, false) non incrementa gli acquisti', () => {
+    const run = new RunManager();
+    run.state.gold = new Decimal(100);
+    run.spendGold(new Decimal(10), false);
+    expect(run.state.purchases).toBe(0);
+    run.spendGold(new Decimal(10));
+    expect(run.state.purchases).toBe(1);
   });
 });
 

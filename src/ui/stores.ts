@@ -70,6 +70,8 @@ export interface ShopOfferView {
   affordable: boolean;
   rarity?: string;
   note?: string;
+  /** true per Pozione/Elisir: vanno in una riga a parte */
+  service?: boolean;
 }
 
 /** 'battle' = combattimento; 'crossroad' = bivio a due porte;
@@ -80,6 +82,8 @@ export const goldView = writable('0');
 export const runProgress = writable({ act: 1, encounter: 1 });
 export const runLabel = writable('Atto 1 — 1/10');
 export const shopOffers = writable<ShopOfferView[]>([]);
+/** Stato del banco: costo del prossimo rilancio e HP attuali (per decidere se curarsi) */
+export const shopInfo = writable({ rerollCost: '0', canReroll: false, rerolls: 0, hp: '100%' });
 /** true dopo una boss fight: 👑 Mercante Reale (sconto + premium) */
 export const shopSpecial = writable(false);
 

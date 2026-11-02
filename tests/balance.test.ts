@@ -32,7 +32,7 @@ describe('Balance — bot esperto', async () => {
   });
 
   it('il Boss 2 e il Boss 3 non sono passeggiate', () => {
-    expect(smart.reach(19)).toBeLessThan(0.97);
+    expect(smart.reach(24)).toBeLessThan(0.97); // si muore anche dopo il Boss 2
     expect(smart.reach(29)).toBeLessThan(0.8);
   });
 

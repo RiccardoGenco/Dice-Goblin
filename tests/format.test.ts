@@ -32,3 +32,16 @@ describe('formatFaceValue', () => {
     expect(faceLabel({ value: new Decimal(2.5), type: FaceType.MULTIPLIER })).toBe('×2.5');
   });
 });
+
+import { upgradedFaceValue } from '../src/core/format';
+describe('upgradedFaceValue', () => {
+  it('potenziare non peggiora mai una faccia', () => {
+    for (const v of [0.5, 1, 1.25, 1.5, 1.75, 2, 2.5, 3.5, 5, 7, 10.5, 100]) {
+      expect(upgradedFaceValue(new Decimal(v)).gt(v)).toBe(true);
+    }
+  });
+  it('resta ×1.5 arrotondato per le facce normali', () => {
+    expect(upgradedFaceValue(new Decimal(6)).toNumber()).toBe(9);
+    expect(upgradedFaceValue(new Decimal(5)).toNumber()).toBe(7);
+  });
+});

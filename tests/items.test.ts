@@ -141,6 +141,6 @@ describe('Mercante: oggetti', () => {
     const c = shop.itemCost(findItem('lente-avida')!, 0, 0);
     const r = shop.itemCost(findItem('idolo-goblin')!, 0, 0);
     expect(r.gt(c)).toBe(true);
-    expect(shop.sellValue(findItem('lente-avida')!, 0).toNumber()).toBe(15);
+    expect(shop.sellValue(findItem('lente-avida')!, 0).toNumber()).toBe(20); // 0.45 del bottino (90) dimezzato
   });
 });

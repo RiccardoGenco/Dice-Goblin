@@ -6,11 +6,12 @@
   import { BattleState, FaceType, SkillId } from '@core/types';
   import { MAX_EQUIPMENT_SLOTS } from '@core/equipment';
   import { formatBigNumber } from '@core/format';
+  const TIER_NAME: Record<string, string> = { 'comune': 'Tier 1 · comune', 'non-comune': 'Tier 2 · non comune', 'raro': 'Tier 3 · raro' };
   import {
     playerView, enemyView, intentView, battleState, rolledChips,
     overflowActive, rerollsLeft, diceBusy, effectsView, battleResult, logLines, equipVersion,
     menuOpen, menuInfo, runSummary,
-    uiPhase, goldView, runLabel, shopOffers, shopSpecial, rewardBanner,
+    uiPhase, goldView, runLabel, shopOffers, shopInfo, shopSpecial, rewardBanner,
     crossroadSpecial, forgeSpecial, forgeOpsLeft, forgeVersion,
     chainView, skillPreview, rollNonce, runProgress
   } from './stores';
@@ -303,9 +304,9 @@
         <h2>{$shopSpecial ? '👑 Il Mercante Reale' : '🛒 Il Mercante Goblin'}</h2>
         {#if $shopSpecial}<p class="unlock">Prezzi scontati del 30% — bottino da boss fight!</p>{/if}
         {#if $rewardBanner}<p class="unlock">{$rewardBanner}</p>{/if}
-        <p class="gold">💰 {$goldView} oro</p>
+        <p class="gold">💰 {$goldView} oro <span class="hpnow">· ❤️ {$shopInfo.hp}</span></p>
         <div class="offers">
-          {#each $shopOffers as offer (offer.id)}
+          {#each $shopOffers.filter(o => !o.service) as offer (offer.id)}
             <button
               class="offer {offer.rarity ?? ''}"
               disabled={!offer.affordable}
@@ -313,14 +314,28 @@
               on:click={() => gm?.buyOffer(offer.id)}
             >
               <span class="icon">{offer.icon}</span>
-              <span class="label">{offer.label}</span>
+              <span class="label">{offer.label}{#if offer.rarity} <small class="tier">{TIER_NAME[offer.rarity] ?? ''}</small>{/if}</span>
               <span class="hint">{offer.description}{offer.note ? ` — ${offer.note}` : ''}</span>
               <span class="cost" class:too-expensive={!offer.affordable}>💰 {offer.cost}</span>
             </button>
           {/each}
-          {#if $shopOffers.length === 0}
-            <p class="hint">Hai svuotato il banco del mercante!</p>
+          {#if $shopOffers.filter(o => !o.service).length === 0}
+            <p class="hint">Banco vuoto: rilancia per vedere nuova merce.</p>
           {/if}
+        </div>
+        <div class="shop-actions">
+          <button class="shop-reroll" disabled={!$shopInfo.canReroll} on:click={() => gm?.rerollShop()}
+            title="Rimescola oggetti, faccia e dado in vendita. Ogni rilancio della visita costa di più.">
+            🔄 Rilancia il banco <b class="num">💰 {$shopInfo.rerollCost}</b>
+          </button>
+          {#each $shopOffers.filter(o => o.service) as offer (offer.id)}
+            <button class="offer service" disabled={!offer.affordable} title={offer.description}
+              on:click={() => gm?.buyOffer(offer.id)}>
+              <span class="icon">{offer.icon}</span>
+              <span class="label">{offer.label}</span>
+              <span class="cost" class:too-expensive={!offer.affordable}>💰 {offer.cost}</span>
+            </button>
+          {/each}
         </div>
         {#key $equipVersion + ':' + $goldView}
           <div class="sellrow" aria-label="I tuoi oggetti">
@@ -509,7 +524,7 @@
           <li><b>Rilanci gratuiti:</b> tocca i dadi da rilanciare e premi <kbd>R</kbd>. Gli altri restano fermi.</li>
           <li><b>Azioni</b> (tasti <kbd>1</kbd>-<kbd>4</kbd>): Sgancio (colpo sicuro), Parata (scudo che rimbalza se il nemico attacca), Bava (veleno forte, ignora lo scudo), Carica (salti il turno, tieni le facce, il lancio dopo vale ×1.5). Leggi sempre l'intento del nemico.</li>
           <li><b>Facce incantate:</b> ☠ veleno, 🛡 scudo, 🔥 fuoco. Se escono insieme reagiscono: Vapori (☠🔥), Scudo ardente (🛡🔥), Spore (☠🛡).</li>
-          <li><b>Dopo ogni incontro</b> scegli una porta: Mercante (oggetti, forza, vitalità, dadi) o Forgia (migliora le facce). Un incontro su cinque è un Campione o un Boss, con sconti e bottino migliori.</li>
+          <li><b>Dopo ogni incontro</b> scegli una porta: Mercante (oggetti su tre livelli di rarità, facce, dadi, pozioni, e un rilancio del banco che costa sempre di più) o Forgia (migliora le facce). Forza e Vitalità crescono da sole a ogni vittoria. Una parte dell'oro che non spendi ti torna come interesse. Un incontro su cinque è un Campione o un Boss, con sconti e bottino migliori.</li>
           <li><b>Gli HP restano:</b> +20% dopo ogni vittoria, pieni dopo Campioni e Boss. 5 oggetti al massimo, rivendibili a metà prezzo.</li>
           <li>3 Atti da 10 incontri. Se cadi la run finisce, ma i dadi sbloccati restano.</li>
         </ul>
@@ -613,6 +628,15 @@
   }
   .tray { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
   .num { font-family: var(--num); }
+  .hpnow { font-size: 14px; color: var(--muted); font-weight: 400; }
+  .tier { margin-left: 8px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  .offer.comune .tier { color: #9aa0a6; }
+  .offer.non-comune .tier { color: #7dff9b; }
+  .offer.raro .tier { color: #ffb84c; }
+  .shop-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 10px 0; }
+  .shop-actions .shop-reroll { white-space: nowrap; background: #241f3d; border: 2px solid #4a4268; color: var(--ink); border-radius: 8px; padding: 8px 14px; cursor: pointer; font-family: inherit; font-size: 14px; }
+  .shop-actions .shop-reroll:disabled { opacity: 0.45; cursor: default; }
+  .shop-actions .offer.service { min-width: 0; flex-direction: row; gap: 8px; padding: 8px 14px; }
   .chip {
     border-radius: 6px; padding: 5px 14px; border: 2px solid #4a4268; background: #241f3d; color: var(--ink);
     font-family: var(--num); font-size: 19px; font-weight: 700; min-width: 42px;

@@ -37,3 +37,12 @@ export function formatFaceValue(value: Decimal): string {
   if (m >= 10) { m /= 10; e += 1; }
   return `${m}e${e}`;
 }
+
+/**
+ * Potenziamento di una faccia normale (negozio e Tempra): ×1.5, arrotondato per
+ * difetto, ma mai meno di +1. Senza il minimo una faccia da 1.25 diventava 1
+ * (floor(1.875)) e "potenziare" la peggiorava.
+ */
+export function upgradedFaceValue(value: Decimal): Decimal {
+  return Decimal.max(value.times(1.5).floor(), value.floor().plus(1));
+}

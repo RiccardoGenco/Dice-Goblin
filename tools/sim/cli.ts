@@ -1,7 +1,13 @@
 import { simulateMany } from './bot';
+import { BALANCE } from '../../src/core/types';
 
-/* Uso: npx vite-node tools/sim/cli.ts [--seeds=80] [--policy=smart|naive] [--hp=1|0] */
+/* Uso: npx vite-node tools/sim/cli.ts [--seeds=80] [--policy=smart|naive] [--hp=1|0] [--set=WIN_STR_GROWTH:1.12,...] */
 const args = Object.fromEntries(process.argv.slice(2).map(a => a.replace(/^--/, '').split('=')));
+// --set=CHIAVE:valore,CHIAVE:valore  sovrascrive BALANCE per provare una taratura senza toccare il codice
+for (const kv of String(args.set ?? '').split(',').filter(Boolean)) {
+  const [k, v] = kv.split(':');
+  (BALANCE as any)[k!] = Number(v);
+}
 const seeds = Number(args.seeds ?? 80);
 const policy = (args.policy ?? 'smart') as 'smart' | 'naive';
 const carryHp = args.hp !== '0';

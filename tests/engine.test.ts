@@ -95,11 +95,11 @@ describe('Curve di progressione esponenziale (GDD §4.2)', () => {
     expect(scaleEnemyHp(new Decimal(100), 10).toNumber())
       .toBeCloseTo(100 * BALANCE.ENEMY_HP_GROWTH ** 10);
   });
-  it('i costi crescono più piano dell\'oro guadagnato (il potere d\'acquisto sale)', () => {
-    expect(BALANCE.SHOP_COST_GROWTH).toBeLessThan(BALANCE.GOLD_REWARD_GROWTH);
+  it('i costi seguono il bottino (stesso potere d\'acquisto a inizio e fine run)', () => {
+    expect(BALANCE.SHOP_COST_GROWTH).toBe(BALANCE.GOLD_REWARD_GROWTH);
     const cost = scaleShopCost(new Decimal(100), 20);
     const income = new Decimal(100).times(new Decimal(BALANCE.GOLD_REWARD_GROWTH).pow(20));
-    expect(income.gt(cost)).toBe(true);
+    expect(cost.div(income).toNumber()).toBeCloseTo(1, 6);
   });
 });
 

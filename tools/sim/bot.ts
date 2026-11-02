@@ -127,7 +127,7 @@ async function fight(
 }
 
 function forgeVisit(forge: Forge, bag: GoblinDie[], run: RunManager, special: boolean): void {
-  const ctx = { level: run.level, purchases: run.state.purchases, special };
+  const ctx = { level: run.shopLevel, purchases: run.state.purchases, special };
   for (let op = 0; op < forge.opsPerVisit(special); op++) {
     let done = false;
     for (let di = 0; di < bag.length && !done; di++) {
@@ -155,33 +155,54 @@ function forgeVisit(forge: Forge, bag: GoblinDie[], run: RunManager, special: bo
   }
 }
 
+/** Solo per esperimenti: SIM_NOSHOP=1 salta negozio e forgia (misura quanto pesano) */
+const NOSHOP = !!(globalThis as any).process?.env?.SIM_NOSHOP;
+
 const RARITY_ORDER: Record<string, number> = { 'comune': 0, 'non-comune': 1, 'raro': 2 };
 
 function shopVisit(shop: Shop, stats: any, bag: GoblinDie[], eq: EquipmentManager, run: RunManager, special: boolean): void {
-  // come nel gioco: offerte generate UNA volta per visita, ognuna comprabile una volta
-  const offers = shop.generateOffers(run.level, run.state.purchases, bag, [], special, eq.ownedIds, run.state.hpRatio);
-  const rank = (o: any) =>
-    o.kind === 'item' ? 10 + RARITY_ORDER[o.rarity]! : o.kind === 'stat-str-major' ? 9 : o.kind === 'stat-str' ? 8 : o.kind === 'stat-vit' ? 5 : o.kind === 'potion' ? 6 : 1;
-  offers.sort((a, b) => rank(b) - rank(a));
-  for (const o of offers) {
-    if (run.state.gold.lt(o.cost)) continue;
-    if (o.kind === 'item') {
-      if (eq.freeSlots === 0) {
-        if (o.rarity !== 'raro') continue;
-        const idx = eq.slots.findIndex(s => s && s.rarity === 'comune');
-        if (idx < 0) continue;
-        run.addGold(shop.sellValue(eq.slots[idx]!, run.level));
-        eq.unequip(idx);
+  // come nel gioco: offerte generate per visita, ognuna comprabile una volta; rilancio a costo crescente
+  const available: any[] = [];
+  let rerolls = 0;
+  let offers = shop.generateOffers(run.shopLevel, run.state.purchases, bag, available, special, eq.ownedIds, run.state.hpRatio);
+  const rank = (o: any) => {
+    if (o.kind === 'item') return 10 + RARITY_ORDER[o.rarity]!;
+    if (o.kind === 'upgrade-face') return bag[o.dieIndex]?.faces[o.faceIndex]?.type === FaceType.MULTIPLIER ? 12.5 : 4;
+    if (o.kind === 'potion' || o.kind === 'elixir') return 20; // le cure prima, ma solo se servono (vedi sotto)
+    return 1;
+  };
+  for (let round = 0; round < 4; round++) {
+    offers.sort((a, b) => rank(b) - rank(a));
+    for (const o of offers) {
+      if (run.state.gold.lt(o.cost)) continue;
+      if (o.kind === 'potion') {
+        if (run.state.hpRatio < 0.75 && run.spendGold(o.cost, false)) run.state.hpRatio = Math.min(1, run.state.hpRatio + POTION_HEAL);
+        continue;
       }
-      const item = findItem(o.itemId ?? '');
-      if (item && run.spendGold(o.cost)) eq.equip(item);
-      continue;
+      if (o.kind === 'elixir') {
+        if (run.state.hpRatio < 0.5 && run.spendGold(o.cost, false)) run.state.hpRatio = 1;
+        continue;
+      }
+      if (o.kind === 'item') {
+        if (eq.freeSlots === 0) {
+          if (o.rarity !== 'raro') continue;
+          const idx = eq.slots.findIndex(s => s && s.rarity === 'comune');
+          if (idx < 0) continue;
+          run.addGold(shop.sellValue(eq.slots[idx]!, run.shopLevel));
+          eq.unequip(idx);
+        }
+        const item = findItem(o.itemId ?? '');
+        if (item && run.spendGold(o.cost)) eq.equip(item);
+        continue;
+      }
+      if (run.spendGold(o.cost)) shop.apply(o, { stats, bag, blueprints: UNLOCKABLE_DICE });
     }
-    if (o.kind === 'potion') {
-      if (run.state.hpRatio < 0.75 && run.spendGold(o.cost)) run.state.hpRatio = Math.min(1, run.state.hpRatio + POTION_HEAL);
-      continue;
-    }
-    if (run.spendGold(o.cost)) shop.apply(o, { stats, bag, blueprints: UNLOCKABLE_DICE });
+    // rilancia solo se l'oro avanzato è molto più del prezzo del rilancio
+    const rc = shop.rerollCost(run.shopLevel, rerolls);
+    if (run.state.gold.lt(rc.times(3))) break;
+    if (!run.spendGold(rc, false)) break;
+    rerolls++;
+    offers = shop.generateMerchandise(run.shopLevel, run.state.purchases, bag, available, special, eq.ownedIds);
   }
 }
 
@@ -208,12 +229,15 @@ export async function simulateRun(seed: number, opts: BotOptions): Promise<RunRe
     if (!r.won) return { diedAt: L, log };
     run.state.hpRatio = special ? 1 : Math.min(1, Math.max(0.05, r.hpRatio) + BALANCE.HEAL_PER_WIN);
     run.addGold(run.goldReward());
+    run.applyInterest();
+    stats.str = stats.str.times(BALANCE.WIN_STR_GROWTH);
+    stats.vit = stats.vit.times(BALANCE.WIN_VIT_GROWTH);
     run.advance();
     const visitShop = special || !forgeNext;
     const visitForge = special || forgeNext;
     forgeNext = !forgeNext;
-    if (visitForge) forgeVisit(forge, bag, run, special);
-    if (visitShop) shopVisit(shop, stats, bag, eq, run, special);
+    if (visitForge && !NOSHOP) forgeVisit(forge, bag, run, special);
+    if (visitShop && !NOSHOP) shopVisit(shop, stats, bag, eq, run, special);
   }
   return { diedAt: 30, log };
 }

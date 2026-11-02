@@ -45,6 +45,7 @@ import {
   goldView,
   runLabel,
   shopOffers,
+  shopInfo,
   shopSpecial,
   crossroadSpecial,
   forgeSpecial,
@@ -128,6 +129,8 @@ export class GameManager {
   private readonly saveMgr = new SaveManager();
   private unlocks: string[] = [];
   private currentOffers: ShopOffer[] = [];
+  private shopRerolls = 0;
+  private shopIsSpecial = false;
   /** Operazioni di forgia rimaste nella visita corrente */
   private opsLeft = 0;
   /** true = l'intermezzo corrente è speciale (post boss fight) */
@@ -172,7 +175,9 @@ export class GameManager {
       champion: CHAMPION_STAT_MULTIPLIER, bossHp: BOSS_HP_MULTIPLIER, bossStr: BOSS_STR_MULTIPLIER, potion: POTION_HEAL,
       gold: BALANCE.GOLD_REWARD_BASE, goldGrowth: BALANCE.GOLD_REWARD_GROWTH,
       costGrowth: BALANCE.SHOP_COST_GROWTH, heal: BALANCE.HEAL_PER_WIN,
-      rerolls: BALANCE.REROLLS_PER_TURN
+      rerolls: BALANCE.REROLLS_PER_TURN,
+      growStr: BALANCE.WIN_STR_GROWTH, growVit: BALANCE.WIN_VIT_GROWTH,
+      interest: BALANCE.INTEREST_RATE, rerollCost: BALANCE.REROLL_COST
     };
   }
 
@@ -577,6 +582,16 @@ export class GameManager {
     pushLog(`💰 Bottino: ${formatBigNumber(reward)} oro`);
     this.log.stats.goldEarned = this.log.stats.goldEarned.plus(reward);
     this.log.add('result', `Bottino ${formatBigNumber(reward)} oro (totale ${formatBigNumber(this.run.state.gold)})`);
+    const interest = this.run.applyInterest();
+    if (interest.gt(0)) {
+      pushLog(`🏦 Interesse: +${formatBigNumber(interest)} oro`);
+      this.log.stats.goldEarned = this.log.stats.goldEarned.plus(interest);
+      this.log.add('result', `Interesse sull'oro non speso: +${formatBigNumber(interest)} (totale ${formatBigNumber(this.run.state.gold)})`);
+    }
+    // Crescita automatica: Forza e Vitalità non si comprano più, salgono con le vittorie
+    this.playerStats.str = this.playerStats.str.times(BALANCE.WIN_STR_GROWTH);
+    this.playerStats.vit = this.playerStats.vit.times(BALANCE.WIN_VIT_GROWTH);
+    this.log.add('result', `Il goblin cresce: Forza ${formatBigNumber(this.playerStats.str)}, Vitalità ${formatBigNumber(this.playerStats.vit)}`);
 
     // Le boss fight aprono gli intermezzi SPECIALI (specs §7.bis/§10):
     // Campione -> bivio dorato; Boss d'Atto -> Mercante Reale + Gran Forgia
@@ -767,7 +782,7 @@ export class GameManager {
   /** Valore di rivendita dell'oggetto nello slot, o null se vuoto */
   public sellValueOf(slotIndex: number): Decimal | null {
     const item = this.equipment.slots[slotIndex];
-    return item ? this.shop.sellValue(item, this.run.level) : null;
+    return item ? this.shop.sellValue(item, this.run.shopLevel) : null;
   }
 
   /** Vende l'oggetto di uno slot: solo dal mercante */
@@ -775,7 +790,7 @@ export class GameManager {
     if (get(uiPhase) !== 'shop') return;
     const item = this.equipment.slots[slotIndex];
     if (!item) return;
-    const value = this.shop.sellValue(item, this.run.level);
+    const value = this.shop.sellValue(item, this.run.shopLevel);
     this.equipment.unequip(slotIndex);
     this.run.addGold(value);
     this.syncEquipment();
@@ -792,8 +807,10 @@ export class GameManager {
 
   private openShop(special: boolean): void {
     const available = UNLOCKABLE_DICE.filter(bp => this.unlocks.includes(bp.id));
+    this.shopRerolls = 0;
+    this.shopIsSpecial = special;
     this.currentOffers = this.shop.generateOffers(
-      this.run.level,
+      this.run.shopLevel,
       this.run.state.purchases,
       this.bag,
       available,
@@ -819,14 +836,46 @@ export class GameManager {
         cost: formatBigNumber(o.cost),
         affordable: gold.gte(o.cost) && !(o.kind === 'item' && this.equipment.freeSlots === 0),
         ...(o.rarity ? { rarity: o.rarity } : {}),
+        ...(o.kind === 'potion' || o.kind === 'elixir' ? { service: true } : {}),
         ...(o.kind === 'item' && this.equipment.freeSlots === 0 ? { note: 'Slot pieni: vendi un oggetto' } : {})
       }))
     );
+    const rc = this.shop.rerollCost(this.run.shopLevel, this.shopRerolls);
+    shopInfo.set({
+      rerollCost: formatBigNumber(rc),
+      canReroll: gold.gte(rc),
+      rerolls: this.shopRerolls,
+      hp: `${Math.round(this.run.state.hpRatio * 100)}%`
+    });
+  }
+
+  /** Rilancio del banco: rimescola merce (oggetti, faccia, dado), costo crescente nella visita */
+  public rerollShop(): void {
+    if (get(uiPhase) !== 'shop') return;
+    const cost = this.shop.rerollCost(this.run.shopLevel, this.shopRerolls);
+    if (!this.run.spendGold(cost, false)) {
+      pushLog('✋ Oro insufficiente per rilanciare il banco');
+      return;
+    }
+    this.shopRerolls++;
+    this.log.stats.goldSpent = this.log.stats.goldSpent.plus(cost);
+    const available = UNLOCKABLE_DICE.filter(bp => this.unlocks.includes(bp.id));
+    const fresh = this.shop.generateMerchandise(
+      this.run.shopLevel, this.run.state.purchases, this.bag, available, this.shopIsSpecial, this.equipment.ownedIds
+    );
+    const services = this.currentOffers.filter(o => o.kind === 'potion' || o.kind === 'elixir');
+    this.currentOffers = [...fresh, ...services];
+    pushLog(`🔄 Banco rilanciato (-${formatBigNumber(cost)})`);
+    this.log.add('shop', `Rilancio #${this.shopRerolls} per ${formatBigNumber(cost)} — oro ${formatBigNumber(this.run.state.gold)} — nuove offerte: ${fresh.map(o => `${o.label} (${formatBigNumber(o.cost)})`).join('; ')}`);
+    this.publishOffers();
+    this.refreshRunHeader();
+    this.persistLog();
+    this.autosave();
   }
 
   /** Acquisto dallo shop: addebita, applica, rigenera le viste.
    *  L'offerta comprata sparisce; le altre restano (ma i prezzi
-   *  futuri saliranno di 1.25^acquisti). */
+   *  futuri saliranno del 3% per ogni acquisto di merce). */
   public buyOffer(offerId: string): void {
     const offer = this.currentOffers.find(o => o.id === offerId);
     if (!offer) return;
@@ -834,7 +883,8 @@ export class GameManager {
       pushLog('✋ Slot pieni: vendi un oggetto prima di comprarne un altro');
       return;
     }
-    if (!this.run.spendGold(offer.cost)) {
+    const isService = offer.kind === 'potion' || offer.kind === 'elixir';
+    if (!this.run.spendGold(offer.cost, !isService)) {
       pushLog(`✋ Oro insufficiente per ${offer.label}`);
       return;
     }
@@ -843,10 +893,10 @@ export class GameManager {
       bag: this.bag,
       blueprints: UNLOCKABLE_DICE
     });
-    if (offer.kind === 'potion') {
+    if (isService) {
       const before = this.run.state.hpRatio;
-      this.run.state.hpRatio = Math.min(1, before + POTION_HEAL);
-      this.log.add('shop', `Pozione: HP ${Math.round(before * 100)}% → ${Math.round(this.run.state.hpRatio * 100)}%`);
+      this.run.state.hpRatio = offer.kind === 'elixir' ? 1 : Math.min(1, before + POTION_HEAL);
+      this.log.add('shop', `${offer.kind === 'elixir' ? 'Elisir' : 'Pozione'}: HP ${Math.round(before * 100)}% → ${Math.round(this.run.state.hpRatio * 100)}%`);
     }
     if (offer.kind === 'item') {
       const item = findItem(offer.itemId ?? '');
@@ -860,6 +910,12 @@ export class GameManager {
     this.log.add('shop', `Acquisto: ${offer.label} per ${formatBigNumber(offer.cost)} — oro rimasto ${formatBigNumber(this.run.state.gold)}`);
     this.persistLog();
     this.currentOffers = this.currentOffers.filter(o => o.id !== offerId);
+    // le cure che non servono più spariscono (nessuna pozione a HP pieni)
+    if (isService) {
+      const hp = this.run.state.hpRatio;
+      this.currentOffers = this.currentOffers.filter(o =>
+        !(o.kind === 'potion' && hp >= 0.98) && !(o.kind === 'elixir' && hp >= 0.6));
+    }
     this.publishOffers();
     this.refreshRunHeader();
     this.autosave();
@@ -882,7 +938,7 @@ export class GameManager {
 
   private forgeCtx(): ForgeContext {
     return {
-      level: this.run.level,
+      level: this.run.shopLevel,
       purchases: this.run.state.purchases,
       special: this.intermissionSpecial
     };

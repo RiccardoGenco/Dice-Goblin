@@ -48,6 +48,12 @@ export class RunManager {
     return (this.state.act - 1) * ENCOUNTERS_PER_ACT + (this.state.encounter - 1);
   }
 
+  /** Livello di riferimento dei prezzi: quello dell'incontro appena vinto. Il negozio
+   *  si visita dopo `advance()`, ma il bottino in tasca è quello del livello prima. */
+  public get shopLevel(): number {
+    return Math.max(0, this.level - 1);
+  }
+
   /** True su OGNI boss fight (incontri multipli di 5: Campione e Boss) */
   public get isBossFight(): boolean {
     return this.state.encounter % BOSS_INTERVAL === 0;
@@ -86,15 +92,31 @@ export class RunManager {
     return base;
   }
 
+  /** Oro "di riferimento" del livello: il bottino di un incontro normale.
+   *  Tutti i prezzi del negozio sono una frazione di questo numero. */
+  public static incomeAt(level: number): Decimal {
+    return new Decimal(BALANCE.GOLD_REWARD_BASE).times(new Decimal(BALANCE.GOLD_REWARD_GROWTH).pow(level));
+  }
+
+  /** Interesse sull'oro non speso (con tetto): si incassa dopo il bottino. Ritorna l'importo. */
+  public applyInterest(): Decimal {
+    const raw = this.state.gold.times(BALANCE.INTEREST_RATE);
+    const cap = RunManager.incomeAt(this.level).times(BALANCE.INTEREST_CAP);
+    const gain = Decimal.min(raw, cap).floor();
+    if (gain.gt(0)) this.state.gold = this.state.gold.plus(gain);
+    return gain;
+  }
+
   public addGold(amount: Decimal): void {
     this.state.gold = this.state.gold.plus(amount);
   }
 
-  /** Ritorna false (senza addebitare) se l'oro non basta */
-  public spendGold(amount: Decimal): boolean {
+  /** Ritorna false (senza addebitare) se l'oro non basta.
+   *  `counts=false` per le spese che non devono rincarare i prezzi (rilanci, servizi). */
+  public spendGold(amount: Decimal, counts = true): boolean {
     if (this.state.gold.lt(amount)) return false;
     this.state.gold = this.state.gold.minus(amount);
-    this.state.purchases++;
+    if (counts) this.state.purchases++;
     return true;
   }
 

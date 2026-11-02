@@ -1,36 +1,40 @@
+import { upgradedFaceValue } from './format';
 import Decimal from 'break_infinity.js';
 import { GoblinDie } from './GoblinDie';
-import { scaleShopCost } from './BattleEngine';
-import { CombatantStats, FaceType, RNG, defaultRNG } from './types';
+import { BALANCE, CombatantStats, FaceType, RNG, defaultRNG } from './types';
 import { DieBlueprint, createDieFromBlueprint } from './diceCatalog';
-import { EquipmentItem, ITEMS, ITEM_RARITY_META, ItemRarity } from './equipment';
+import { EquipmentItem, ITEMS, ItemRarity } from './equipment';
+import { RunManager } from './RunManager';
 
 /* ============================================================
- * Shop — Economia della run (GDD §4.2 + MVP §1)
+ * Shop — Economia della run (rework)
  *
- * SCALING DEI COSTI: ogni offerta usa la curva ufficiale
- *   Cost(level) = base * 1.5^level        (scaleShopCost)
- * più un rincaro di +25% composto per ogni acquisto già fatto
- * nella run: comprare tutto diventa progressivamente impossibile
- * e il giocatore deve scegliere una direzione di build.
+ * UNITÀ DI PREZZO: il bottino di un incontro normale a quel livello
+ * (RunManager.incomeAt). Ogni prezzo è una frazione di quel numero,
+ * quindi il potere d'acquisto è lo stesso all'inizio e alla fine della
+ * run: due o tre acquisti sensati a ogni visita.
+ *
+ * COSA SI COMPRA
+ *  - Oggetti, su tre livelli di rarità. Più è alto il livello, più
+ *    l'effetto è forte e più costa. La rarità offerta cambia con la
+ *    profondità della run: all'inizio quasi solo comuni, alla fine
+ *    soprattutto non comuni e rari.
+ *  - Potenziare una faccia (le facce ×, più potenti, costano di più).
+ *  - Un dado nuovo dal pool sbloccato.
+ *  - Servizi: Pozione (+50% HP) ed Elisir (HP al massimo).
+ *  - Rilancio del banco: costo che sale a ogni rilancio della visita,
+ *    così qualsiasi quantità di oro si trasforma in scelta.
+ *  Forza e Vitalità non si comprano più: crescono con le vittorie.
  * ============================================================ */
 
-// TUNING (balance sim): 1.25 -> 1.08. Il rincaro composto per
-// sempre a 1.25 distruggeva il potere d'acquisto (~x6e5 a fine run)
-export const PURCHASE_INFLATION = 1.05;
-/** Quota degli HP massimi curata da una Pozione (sink dell'oro: prima non esisteva cura a pagamento) */
-export const POTION_HEAL = 0.5;
+/** Rincaro composto per ogni acquisto già fatto nella run (solo merce, non servizi) */
+export const PURCHASE_INFLATION = 1.03;
 /** Sconto del Mercante Reale (dopo le boss fight): prezzi x0.7 */
 export const SPECIAL_DISCOUNT = 0.7;
+/** Quota degli HP massimi curata da una Pozione */
+export const POTION_HEAL = 0.5;
 
-export type OfferKind =
-  | 'stat-str'
-  | 'stat-str-major' // esclusiva del Mercante Reale
-  | 'stat-vit'
-  | 'potion'
-  | 'upgrade-face'
-  | 'new-die'
-  | 'item';
+export type OfferKind = 'upgrade-face' | 'new-die' | 'item' | 'potion' | 'elixir';
 
 export interface ShopOffer {
   id: string;
@@ -49,126 +53,106 @@ export interface ShopOffer {
   rarity?: ItemRarity;
 }
 
-const BASE_COST: Record<OfferKind, number> = {
-  'stat-str': 25,
-  'stat-str-major': 60,
-  'stat-vit': 20,
-  'potion': 40,
-  'upgrade-face': 30,
-  'new-die': 80,
-  'item': 0 // il prezzo dipende dalla rarità (ITEM_BASE_COST)
-};
+/** Prezzo come frazione del bottino del livello */
+const COST_FRACTION = {
+  'face': 0.35,
+  'face-mult': 0.8, // una faccia × vale molto più di una normale
+  'new-die': 1.0,
+  'potion': 0.4,
+  'elixir': 0.9
+} as const;
 
-export const ITEM_BASE_COST: Record<ItemRarity, number> = {
-  'comune': 30,
-  'non-comune': 55,
-  'raro': 100
+export const ITEM_COST_FRACTION: Record<ItemRarity, number> = {
+  'comune': 0.45,
+  'non-comune': 0.85,
+  'raro': 1.5
 };
 /** Quota del prezzo che si recupera rivendendo un oggetto */
 export const SELL_RATIO = 0.5;
-/** Oggetti in vendita a ogni visita */
-export const ITEMS_PER_VISIT = 2;
+/** Oggetti in vendita a ogni visita (il Mercante Reale ne ha uno in più) */
+export const ITEMS_PER_VISIT = 3;
+
+/** Pesi di rarità in base alla profondità (livello 0..29) */
+export function tierWeights(level: number, special = false): Record<ItemRarity, number> {
+  const L = Math.max(0, level);
+  return {
+    'comune': Math.max(15, 70 - 2 * L),
+    'non-comune': Math.min(45, 27 + 0.7 * L),
+    'raro': Math.min(40, 3 + 1.4 * L) * (special ? 3 : 1)
+  };
+}
 
 export class Shop {
   constructor(private readonly rng: RNG = defaultRNG) {}
 
-  private cost(
-    kind: OfferKind,
-    level: number,
-    purchases: number,
-    special = false
-  ): Decimal {
-    let c = scaleShopCost(new Decimal(BASE_COST[kind]), level)
-      .times(new Decimal(PURCHASE_INFLATION).pow(purchases));
-    // Mercante Reale: il picco d'oro delle boss fight incontra lo sconto
+  private unit(level: number): Decimal {
+    return RunManager.incomeAt(level);
+  }
+
+  private price(fraction: number, level: number, purchases: number, special: boolean, inflate = true): Decimal {
+    let c = this.unit(level).times(fraction);
+    if (inflate) c = c.times(new Decimal(PURCHASE_INFLATION).pow(purchases));
     if (special) c = c.times(SPECIAL_DISCOUNT);
     return c.floor();
   }
 
   public itemCost(item: EquipmentItem, level: number, purchases: number, special = false): Decimal {
-    let c = scaleShopCost(new Decimal(ITEM_BASE_COST[item.rarity]), level)
-      .times(new Decimal(PURCHASE_INFLATION).pow(purchases));
-    if (special) c = c.times(SPECIAL_DISCOUNT);
-    return c.floor();
+    return this.price(ITEM_COST_FRACTION[item.rarity], level, purchases, special);
   }
 
   /** Quanto si incassa rivendendo l'oggetto (al prezzo del livello attuale, senza rincari) */
   public sellValue(item: EquipmentItem, level: number): Decimal {
-    return scaleShopCost(new Decimal(ITEM_BASE_COST[item.rarity]), level).times(SELL_RATIO).floor();
+    return this.unit(level).times(ITEM_COST_FRACTION[item.rarity]).times(SELL_RATIO).floor();
   }
 
-  /** Pesca oggetti non posseduti, pesati per rarità (più rari dal Mercante Reale) */
-  private pickItems(count: number, owned: readonly string[], special: boolean): EquipmentItem[] {
+  /** Costo del rilancio del banco: cresce a ogni rilancio della stessa visita */
+  public rerollCost(level: number, rerollsDone: number): Decimal {
+    return this.unit(level)
+      .times(BALANCE.REROLL_COST)
+      .times(new Decimal(BALANCE.REROLL_GROWTH).pow(rerollsDone))
+      .floor();
+  }
+
+  /** Pesca oggetti non posseduti, pesati per rarità in base alla profondità.
+   *  `guaranteeRare`: almeno un raro, se ce n'è ancora. */
+  private pickItems(
+    count: number, owned: readonly string[], level: number, special: boolean, guaranteeRare: boolean
+  ): EquipmentItem[] {
     const pool = ITEMS.filter(i => !owned.includes(i.id));
+    const weights = tierWeights(level, special);
     const picked: EquipmentItem[] = [];
-    while (picked.length < count && pool.length > 0) {
-      const w = (i: EquipmentItem) => ITEM_RARITY_META[i.rarity].weight * (special && i.rarity === 'raro' ? 3 : 1);
-      const total = pool.reduce((a, i) => a + w(i), 0);
+    const draw = (from: EquipmentItem[]): EquipmentItem => {
+      const total = from.reduce((a, i) => a + weights[i.rarity], 0);
       let r = this.rng.next() * total;
       let idx = 0;
-      for (; idx < pool.length - 1; idx++) {
-        r -= w(pool[idx]!);
+      for (; idx < from.length - 1; idx++) {
+        r -= weights[from[idx]!.rarity];
         if (r < 0) break;
       }
-      picked.push(pool.splice(idx, 1)[0]!);
+      return from[idx]!;
+    };
+    const take = (it: EquipmentItem) => {
+      pool.splice(pool.indexOf(it), 1);
+      picked.push(it);
+    };
+    if (guaranteeRare) {
+      const rares = pool.filter(i => i.rarity === 'raro');
+      if (rares.length > 0) take(draw(rares));
     }
+    while (picked.length < count && pool.length > 0) take(draw(pool));
     return picked;
   }
 
-  /** Genera le offerte della visita. Con special=true (dopo una
-   *  boss fight) applica lo sconto del Mercante Reale e aggiunge
-   *  l'offerta premium esclusiva. */
-  public generateOffers(
+  /** La merce del banco (si rimescola col rilancio) */
+  public generateMerchandise(
     level: number,
     purchases: number,
     bag: GoblinDie[],
     unlockedBlueprints: DieBlueprint[],
     special = false,
-    ownedItemIds: readonly string[] = [],
-    hpRatio = 1
+    ownedItemIds: readonly string[] = []
   ): ShopOffer[] {
     const offers: ShopOffer[] = [];
-
-    if (special) {
-      offers.push({
-        id: 'offer-str-major',
-        kind: 'stat-str-major',
-        icon: '💎',
-        label: '+60% Forza',
-        description: 'Offerta premium del Mercante Reale',
-        cost: this.cost('stat-str-major', level, purchases, special)
-      });
-    }
-
-    offers.push({
-      id: 'offer-str',
-      kind: 'stat-str',
-      icon: '💪',
-      label: '+30% Forza',
-      description: 'Aumenta la STR base (Fase FLAT della pipeline)',
-      cost: this.cost('stat-str', level, purchases, special)
-    });
-
-    offers.push({
-      id: 'offer-vit',
-      kind: 'stat-vit',
-      icon: '❤️',
-      label: '+25% Vitalità',
-      description: 'Più HP massimi dalla prossima battaglia',
-      cost: this.cost('stat-vit', level, purchases, special)
-    });
-
-    // Pozione: solo se si è feriti (l'offerta ha senso solo se cura qualcosa)
-    if (hpRatio < 0.98) {
-      offers.push({
-        id: 'offer-potion',
-        kind: 'potion',
-        icon: '🧪',
-        label: `Pozione di Cura (+${Math.round(POTION_HEAL * 100)}% HP)`,
-        description: 'Cura subito metà degli HP massimi',
-        cost: this.cost('potion', level, purchases, special)
-      });
-    }
 
     // Potenziamento di una faccia casuale della borsa
     const dieIndex = Math.floor(this.rng.next() * bag.length);
@@ -184,17 +168,15 @@ export class Shop {
         label: `Potenzia Dado ${dieIndex + 1}`,
         description: isMult
           ? `Faccia ×${face.value.toString()} -> ×${face.value.plus(0.5).toString()}`
-          : `Faccia ${face.value.toString()} -> ${face.value.times(1.5).floor().toString()}`,
-        cost: this.cost('upgrade-face', level, purchases, special),
+          : `Faccia ${face.value.toString()} -> ${upgradedFaceValue(face.value).toString()}`,
+        cost: this.price(isMult ? COST_FRACTION['face-mult'] : COST_FRACTION.face, level, purchases, special),
         dieIndex,
         faceIndex
       });
     }
 
     // Dado sbloccato dal pool, se non è già in borsa
-    const available = unlockedBlueprints.find(
-      bp => !bag.some(d => d.blueprintId === bp.id)
-    );
+    const available = unlockedBlueprints.find(bp => !bag.some(d => d.blueprintId === bp.id));
     if (available) {
       offers.push({
         id: `offer-die-${available.id}`,
@@ -202,12 +184,13 @@ export class Shop {
         icon: available.icon,
         label: available.name,
         description: available.description,
-        cost: this.cost('new-die', level, purchases, special),
+        cost: this.price(COST_FRACTION['new-die'], level, purchases, special),
         blueprintId: available.id
       });
     }
 
-    for (const item of this.pickItems(ITEMS_PER_VISIT, ownedItemIds, special)) {
+    const count = ITEMS_PER_VISIT + (special ? 1 : 0);
+    for (const item of this.pickItems(count, ownedItemIds, level, special, special)) {
       offers.push({
         id: `offer-item-${item.id}`,
         kind: 'item',
@@ -219,33 +202,59 @@ export class Shop {
         rarity: item.rarity
       });
     }
-
     return offers;
   }
 
-  /** Applica un'offerta GIÀ pagata (il RunManager gestisce l'oro).
-   *
-   *  NOTE DI SCALING:
-   *  - stat-str/vit crescono del 30%/25% composto: acquisti ripetuti
-   *    producono crescita esponenziale allineata alla curva nemici.
-   *  - upgrade-face su MULTIPLIER (+0.5 flat) è volutamente più
-   *    cauto: quel valore entra in Fase MULT dove si compone
-   *    moltiplicativamente con tutto il resto. */
+  /** I servizi (prezzo fisso, non rincarano e non si rimescolano) */
+  public generateServices(level: number, special = false, hpRatio = 1): ShopOffer[] {
+    const offers: ShopOffer[] = [];
+    if (hpRatio < 0.98) {
+      offers.push({
+        id: 'offer-potion',
+        kind: 'potion',
+        icon: '🧪',
+        label: `Pozione di Cura (+${Math.round(POTION_HEAL * 100)}% HP)`,
+        description: 'Cura subito metà degli HP massimi',
+        cost: this.price(COST_FRACTION.potion, level, 0, special, false)
+      });
+    }
+    if (hpRatio < 0.6) {
+      offers.push({
+        id: 'offer-elixir',
+        kind: 'elixir',
+        icon: '🍷',
+        label: 'Elisir di Vita',
+        description: 'HP al massimo, subito',
+        cost: this.price(COST_FRACTION.elixir, level, 0, special, false)
+      });
+    }
+    return offers;
+  }
+
+  /** Tutte le offerte della visita: merce, poi servizi. Con special=true (dopo
+   *  una boss fight) applica lo sconto del Mercante Reale: un oggetto in più e
+   *  almeno un raro garantito. */
+  public generateOffers(
+    level: number,
+    purchases: number,
+    bag: GoblinDie[],
+    unlockedBlueprints: DieBlueprint[],
+    special = false,
+    ownedItemIds: readonly string[] = [],
+    hpRatio = 1
+  ): ShopOffer[] {
+    return [
+      ...this.generateMerchandise(level, purchases, bag, unlockedBlueprints, special, ownedItemIds),
+      ...this.generateServices(level, special, hpRatio)
+    ];
+  }
+
+  /** Applica l'offerta. Le cure agiscono sugli HP della run: le gestisce il chiamante. */
   public apply(
     offer: ShopOffer,
     ctx: { stats: CombatantStats; bag: GoblinDie[]; blueprints: DieBlueprint[] }
   ): void {
     switch (offer.kind) {
-      case 'stat-str':
-        ctx.stats.str = ctx.stats.str.times(1.3);
-        break;
-      case 'stat-str-major':
-        // Premium: x1.6 in un colpo solo (vs 1.3^2 = 1.69 in due acquisti)
-        ctx.stats.str = ctx.stats.str.times(1.6);
-        break;
-      case 'stat-vit':
-        ctx.stats.vit = ctx.stats.vit.times(1.25);
-        break;
       case 'upgrade-face': {
         const die = ctx.bag[offer.dieIndex ?? -1];
         const face = die?.faces[offer.faceIndex ?? -1];
@@ -253,7 +262,7 @@ export class Shop {
           face.value =
             face.type === FaceType.MULTIPLIER
               ? face.value.plus(0.5)
-              : face.value.times(1.5).floor();
+              : upgradedFaceValue(face.value);
         }
         break;
       }
@@ -262,6 +271,8 @@ export class Shop {
         if (bp) ctx.bag.push(createDieFromBlueprint(bp));
         break;
       }
+      default:
+        break; // oggetti e cure: gestiti dal chiamante
     }
   }
 }

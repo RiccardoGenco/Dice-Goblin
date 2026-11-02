@@ -171,14 +171,25 @@ export const BALANCE = {
   /** La FORZA nemica cresce più piano degli HP: la difesa del
    *  giocatore (VIT/scudi/pozioni) ha meno leve dell'attacco. */
   ENEMY_STR_GROWTH: 1.22,
-  /** Scaling costi shop/forgia. TUNING: 1.5 -> 1.35, sotto la
-   *  crescita del reddito (1.5): il potere d'acquisto CRESCE
-   *  lentamente lungo la run (feel incrementale). */
-  SHOP_COST_GROWTH: 1.28,
+  /** Scaling costi shop/forgia: UGUALE alla crescita del bottino. Ogni prezzo è
+   *  una frazione costante del bottino del livello, quindi all'inizio e alla fine
+   *  della run si possono comprare quasi sempre le stesse 2-3 cose. */
+  SHOP_COST_GROWTH: 1.5,
   /** Crescita del reddito per incontro (oro) */
   GOLD_REWARD_GROWTH: 1.5,
   /** Oro dell'incontro 0 (poi cresce di GOLD_REWARD_GROWTH per livello) */
   GOLD_REWARD_BASE: 90,
+  /** Crescita automatica del goblin a ogni vittoria. Prima Forza e Vitalità si
+   *  compravano in negozio: ora sono la base che tiene il passo dei nemici, e il
+   *  negozio serve a scegliere la build (oggetti, facce, dadi). */
+  WIN_STR_GROWTH: 1.22,
+  WIN_VIT_GROWTH: 1.10,
+  /** Interesse sull'oro non speso a ogni vittoria, con tetto in "bottini base" */
+  INTEREST_RATE: 0.08,
+  INTEREST_CAP: 0.5,
+  /** Rilancio del negozio: frazione del bottino, che cresce a ogni rilancio della visita */
+  REROLL_COST: 0.25,
+  REROLL_GROWTH: 1.6,
   /** HP = vit * 10 */
   HP_PER_VIT: 10
 } as const;

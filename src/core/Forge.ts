@@ -1,3 +1,4 @@
+import { upgradedFaceValue } from './format';
 import Decimal from 'break_infinity.js';
 import { GoblinDie } from './GoblinDie';
 import { scaleShopCost } from './BattleEngine';
@@ -150,7 +151,7 @@ export class Forge {
     const after =
       face.type === FaceType.MULTIPLIER
         ? `×${face.value.plus(0.5).toString()}`
-        : face.value.times(1.5).floor().toString();
+        : upgradedFaceValue(face.value).toString();
     const before = face.type === FaceType.MULTIPLIER ? `×${face.value.toString()}` : face.value.toString();
     return { ok: true, cost: this.cost('tempra', ctx), preview: `${before} → ${after}` };
   }
@@ -250,7 +251,7 @@ export class Forge {
         face.value =
           face.type === FaceType.MULTIPLIER
             ? face.value.plus(0.5)
-            : face.value.times(1.5).floor();
+            : upgradedFaceValue(face.value);
         break;
       }
       case 'trasmutazione': {
