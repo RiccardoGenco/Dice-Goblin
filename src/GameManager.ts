@@ -53,7 +53,8 @@ import {
   emitFx,
   chainView,
   skillPreview,
-  rollNonce
+  rollNonce,
+  runProgress
 } from './ui/stores';
 import { ACT_BOSSES, CLASS_SPRITES } from './ui/spriteCatalog';
 
@@ -272,6 +273,7 @@ export class GameManager {
 
   private refreshRunHeader(): void {
     runLabel.set(this.run.label);
+    runProgress.set({ act: this.run.state.act, encounter: this.run.state.encounter });
     goldView.set(formatBigNumber(this.run.state.gold));
   }
 

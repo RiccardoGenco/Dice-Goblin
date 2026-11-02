@@ -18,7 +18,7 @@ import { magneticStep, DEFAULT_MAGNETIC, MagneticConfig } from './MagneticPhysic
  * ============================================================ */
 
 const DIE_SIZE = 1;
-const ARENA_HALF = 5; // semi-larghezza dell'arena
+const ARENA_HALF = 3.2; // semi-larghezza dell'arena: stretta, i dadi restano tra i due combattenti
 /** Tempo massimo di un lancio prima del settle forzato (anti-softlock) */
 const ROLL_TIMEOUT_MS = 4000;
 /** Altezza del punto mirato dalla camera: più alto = arena più in basso */
@@ -141,9 +141,9 @@ export class DiceWorld {
         mass: 1,
         shape: new CANNON.Box(new CANNON.Vec3(DIE_SIZE / 2, DIE_SIZE / 2, DIE_SIZE / 2)),
         position: new CANNON.Vec3(
-          -4 + (i % 5) * 2 + this.rng.next() * 0.5,
+          -2.6 + (i % 5) * 1.3 + this.rng.next() * 0.4,
           4 + Math.floor(i / 5) * 1.5,
-          -2 + this.rng.next() * 1.5
+          -1.8 + this.rng.next() * 1.4
         ),
         // Damping alto: i dadi si fermano rapidamente (pacing)
         linearDamping: 0.25,
@@ -270,7 +270,13 @@ export class DiceWorld {
   }
 
   public resize(width: number, height: number): void {
-    this.camera.aspect = width / height;
+    const aspect = width / height;
+    this.camera.aspect = aspect;
+    // Palco stretto (telefono): la camera si allontana, i dadi restano piccoli
+    // e non coprono i personaggi
+    const k = Math.max(1, 1.6 / aspect);
+    this.camera.position.set(0, 9 * k, 7 * k);
+    this.camera.lookAt(0, CAMERA_TARGET_Y, 0);
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height, false);
   }

@@ -64,6 +64,8 @@ export interface ShopOfferView {
  *  'shop'/'forge' = intermezzi; 'run-complete' = terzo boss. */
 export const uiPhase = writable<'battle' | 'crossroad' | 'shop' | 'forge' | 'run-complete'>('battle');
 export const goldView = writable('0');
+/** Posizione nella run, per la barra di progresso (10 incontri per Atto) */
+export const runProgress = writable({ act: 1, encounter: 1 });
 export const runLabel = writable('Atto 1 — 1/10');
 export const shopOffers = writable<ShopOfferView[]>([]);
 /** true dopo una boss fight: 👑 Mercante Reale (sconto + premium) */

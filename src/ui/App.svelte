@@ -10,7 +10,7 @@
     overflowActive, uiMode, battleResult, logLines, equipVersion,
     uiPhase, goldView, runLabel, shopOffers, shopSpecial, rewardBanner,
     crossroadSpecial, forgeSpecial, forgeOpsLeft, forgeVersion,
-    chainView, skillPreview, rollNonce
+    chainView, skillPreview, rollNonce, runProgress
   } from './stores';
 
   let canvas: HTMLCanvasElement;
@@ -65,11 +65,41 @@
 
   onMount(() => {
     gm = new GameManager(canvas);
-    const onResize = () => gm?.resize(canvas.clientWidth, canvas.clientHeight);
-    window.addEventListener('resize', onResize);
+    // Il canvas copre il palco, che cambia misura con la finestra: osserva il canvas stesso
+    const ro = new ResizeObserver(() => gm?.resize(canvas.clientWidth, canvas.clientHeight));
+    ro.observe(canvas);
     void gm.start();
-    return () => window.removeEventListener('resize', onResize);
+    return () => ro.disconnect();
   });
+
+  /* ---- Nuova run: serve un secondo clic entro 3 secondi ---- */
+  let restartArmed = false;
+  let restartTimer: ReturnType<typeof setTimeout> | undefined;
+  function onRestart(): void {
+    if (!restartArmed) {
+      restartArmed = true;
+      restartTimer = setTimeout(() => { restartArmed = false; }, 3000);
+      return;
+    }
+    clearTimeout(restartTimer);
+    restartArmed = false;
+    void gm?.newRun();
+  }
+
+  /* ---- Tastiera: 1-4 skill, Invio conferma reroll, Esc annulla ---- */
+  function onKey(e: KeyboardEvent): void {
+    if ($uiPhase !== 'battle' || e.ctrlKey || e.metaKey || e.altKey) return;
+    if ($uiMode === 'reroll') {
+      if (e.key === 'Enter') { e.preventDefault(); confirmReroll(); }
+      else if (e.key === 'Escape') { e.preventDefault(); cancelReroll(); }
+      return;
+    }
+    const idx = Number(e.key) - 1;
+    if (idx >= 0 && idx < SKILL_ORDER.length && canAct) {
+      e.preventDefault();
+      useSkill(SKILL_ORDER[idx]!.id);
+    }
+  }
 
   const SKILL_ORDER: { id: SkillId; icon: string; hint: string }[] = [
     { id: SkillId.SGANCIO_BRUTALE, icon: '💥', hint: 'Danno ×1.5' },
@@ -106,88 +136,111 @@
   }
 </script>
 
-<main>
-  <!-- ===== Header run: Atto/incontro, oro, nuova run ===== -->
-  <section class="runbar">
-    <span class="runlabel">{$runLabel}</span>
-    <span class="gold">💰 {$goldView}</span>
-    <button class="mini" on:click={() => void gm?.newRun()}>🔄 Nuova Run</button>
-  </section>
+<svelte:window on:keydown={onKey} />
 
-  <!-- ===== Palco di combattimento: sprite, HP, intento, effetti e dadi 3D ===== -->
-  <Stage>
-    <canvas slot="overlay" bind:this={canvas} class="arena"></canvas>
-  </Stage>
+<main class="game">
+  <!-- ===== Barra alta: progresso della run, relitti, oro ===== -->
+  <header class="topbar">
+    <div class="run">
+      <span class="act">Atto {$runProgress.act}</span>
+      <div class="pips" title={$runLabel}>
+        {#each Array(10) as _, i}
+          <span
+            class="pip"
+            class:done={i < $runProgress.encounter - 1}
+            class:cur={i === $runProgress.encounter - 1}
+            class:champ={i === 4}
+            class:boss={i === 9}
+          ></span>
+        {/each}
+      </div>
+    </div>
 
-  <!-- ===== Chip dei dadi lanciati (selezionabili in reroll) ===== -->
-  <section class="chips">
-    {#key $rollNonce}
-      {#each $rolledChips as chip, i}
-        <button
-          class="chip {chip.cssClass}"
-          style="--i:{i}"
-          class:selected={selectedChips.includes(i)}
-          class:selectable={$uiMode === 'reroll'}
-          on:click={() => toggleChip(i)}
-        >{chip.text}</button>
-      {/each}
+    {#key $equipVersion}
+      <div class="relics" aria-label="Equipaggiamento">
+        {#each Array(MAX_EQUIPMENT_SLOTS) as _, i}
+          {@const item = gm?.equipment.slots[i] ?? null}
+          <button
+            class="relic" class:filled={item}
+            title={item ? `${item.name} — ${item.description} (clic: rimuovi)` : 'Slot vuoto'}
+            on:click={() => item && gm?.unequipSlot(i)}
+          >{item ? item.icon : ''}</button>
+        {/each}
+      </div>
     {/key}
-    {#if $chainView && $battleState === BattleState.WAIT_PLAYER_ACTION}
-      <span class="formula" class:hot={$chainView.tier >= 2}>
-        {#if $chainView.multCount > 0}<span class="f-mult">×{$chainView.mult}</span>{/if}
-        <span class="f-pow">Potenza <b>{$chainView.power}</b></span>
-      </span>
-    {/if}
+
+    <div class="topright">
+      <span class="gold" title="Oro">💰 {$goldView}</span>
+      <button class="restart" class:armed={restartArmed} on:click={onRestart}>
+        {restartArmed ? 'Sicuro? Perdi la run' : '↻ Nuova run'}
+      </button>
+    </div>
+  </header>
+
+  <!-- ===== Palco: sprite, HP, intento, dadi 3D, effetti ===== -->
+  <div class="stage-area">
+    <Stage>
+      <canvas slot="overlay" bind:this={canvas} class="arena"></canvas>
+    </Stage>
+    <div class="feed" aria-live="polite">
+      {#each $logLines.slice(0, 3) as line, i (line + i)}<div style="opacity:{1 - i * 0.3}">{line}</div>{/each}
+    </div>
+  </div>
+
+  <!-- ===== Striscia del tiro: facce, moltiplicatore, potenza ===== -->
+  <section class="scorebar">
+    <div class="tray">
+      {#key $rollNonce}
+        {#each $rolledChips as chip, i}
+          <button
+            class="chip {chip.cssClass}"
+            style="--i:{i}"
+            class:selected={selectedChips.includes(i)}
+            class:selectable={$uiMode === 'reroll'}
+            on:click={() => toggleChip(i)}
+          >{chip.text}</button>
+        {/each}
+      {/key}
+    </div>
     {#if $uiMode === 'reroll'}
-      <span class="reroll-hint">
+      <div class="reroll-hint">
         Scegli fino a 2 dadi da rilanciare ({selectedChips.length}/2)
-        <button class="mini" on:click={confirmReroll}>✔ Conferma</button>
-        <button class="mini" on:click={cancelReroll}>✖ Annulla</button>
-      </span>
+        <button class="mini" on:click={confirmReroll}>✔ Conferma <kbd>Invio</kbd></button>
+        <button class="mini" on:click={cancelReroll}>✖ Annulla <kbd>Esc</kbd></button>
+      </div>
+    {:else if $chainView && $battleState === BattleState.WAIT_PLAYER_ACTION}
+      <div class="formula" class:hot={$chainView.tier >= 2}>
+        {#if $chainView.multCount > 0}<span class="f-mult">×{$chainView.mult}</span>{/if}
+        <span class="f-pow"><small>Potenza</small> <b>{$chainView.power}</b></span>
+      </div>
     {/if}
   </section>
 
-  <!-- ===== Pannello giocatore ===== -->
-  <section class="panel player">
-    <!-- Le 4 skill fisse di classe (MVP §3) -->
-    <div class="skills">
-      {#each SKILL_ORDER as s}
-        <button class="skill" disabled={!canAct} on:click={() => useSkill(s.id)}>
-          <span class="icon">{s.icon}</span>
-          <span class="label">{SKILLS[s.id].name}</span>
-          <span class="preview">{$skillPreview[s.id] ?? '…'}</span>
-          <span class="hint">{s.hint}</span>
+  <!-- ===== Dock: la "mano" di 4 skill + zaino ===== -->
+  <footer class="dock">
+    <div class="hand">
+      {#each SKILL_ORDER as s, i}
+        <button class="card" disabled={!canAct} on:click={() => useSkill(s.id)}>
+          <kbd class="key">{i + 1}</kbd>
+          <span class="c-icon">{s.icon}</span>
+          <span class="c-name">{SKILLS[s.id].name}</span>
+          <span class="c-preview">{$skillPreview[s.id] ?? '…'}</span>
+          <span class="c-hint">{s.hint}</span>
         </button>
       {/each}
     </div>
-
-    <!-- I 5 slot equipaggiamento (MVP §4) + inventario demo -->
     {#key $equipVersion}
-      <div class="equip-row">
-        <div class="slots">
-          {#each Array(MAX_EQUIPMENT_SLOTS) as _, i}
-            {@const item = gm?.equipment.slots[i] ?? null}
-            <button
-              class="slot" class:filled={item}
-              title={item ? `${item.name} — ${item.description} (click: rimuovi)` : 'Slot vuoto'}
-              on:click={() => item && gm?.unequipSlot(i)}
-            >{item ? item.icon : '·'}</button>
-          {/each}
-        </div>
-        <div class="inventory">
+      <div class="bag">
+        <span class="bag-title">Zaino</span>
+        <div class="bag-items">
           {#each gm?.inventory ?? [] as item}
-            <button class="inv-item" title={`${item.name} — ${item.description}`}
+            <button class="inv-item" title={`${item.name} — ${item.description} (clic: equipaggia)`}
               on:click={() => gm?.equipItem(item)}>{item.icon}</button>
           {/each}
         </div>
       </div>
     {/key}
-  </section>
-
-  <!-- ===== Log di battaglia ===== -->
-  <section class="log">
-    {#each $logLines as line}<div>{line}</div>{/each}
-  </section>
+  </footer>
 
   <!-- ===== Overlay Shop (tra un incontro e l'altro) ===== -->
   {#if $uiPhase === 'shop'}
@@ -329,83 +382,175 @@
 </main>
 
 <style>
-  main {
-    max-width: 960px; margin: 0 auto; padding: 12px;
-    display: flex; flex-direction: column; gap: 10px;
-    font-family: monospace; color: #e8e8f0;
+  /* ============================================================
+   * Schermata di gioco: una sola vista a tutta altezza, niente scroll.
+   *   topbar  → progresso run, relitti equipaggiati, oro
+   *   palco   → sprite, HP, intento, dadi 3D (occupa tutto lo spazio libero)
+   *   scorebar→ facce del tiro, moltiplicatore, potenza
+   *   dock    → la "mano" di 4 skill (tasti 1-4) + zaino
+   * ============================================================ */
+  .game {
+    --ink: #ece8f6; --muted: #9a93b3; --line: #3a3354; --panel: #17132a;
+    --pink: #ff5c8a; --gold: #ffd84c; --green: #7dff9b; --cyan: #5cd0ff;
+    height: 100%; box-sizing: border-box; max-width: 1400px; margin: 0 auto;
+    padding: 8px 12px 10px;
+    display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; gap: 8px;
+    font-family: 'Pixelify Sans', ui-monospace, monospace; color: var(--ink);
   }
-  .panel { background: #1a1a22; border: 1px solid #33333f; border-radius: 8px; padding: 10px 14px; }
-  .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-  .row.small { font-size: 12px; opacity: 0.85; margin-top: 4px; }
-  .name { font-weight: bold; }
-  .intent { background: #2b1520; border: 1px solid #ff5c8a; border-radius: 6px; padding: 2px 10px; }
+  .mini {
+    font-size: 12px; padding: 3px 10px; cursor: pointer; font-family: inherit;
+    background: #2a2442; color: inherit; border: 1px solid #5a5080; border-radius: 4px;
+  }
+  kbd {
+    font-family: inherit; font-size: 10px; padding: 0 5px; border-radius: 3px;
+    border: 1px solid currentColor; opacity: 0.7;
+  }
 
-  .hpbar { height: 14px; background: #101014; border-radius: 7px; overflow: hidden; margin-top: 6px; }
-  .fill { height: 100%; transition: width 0.35s ease; }
-  .enemy-fill { background: linear-gradient(90deg, #ff5c5c, #ff9b5c); }
-  .player-fill { background: linear-gradient(90deg, #4cc94c, #7dff9b); }
+  /* ---- Barra alta ---- */
+  .topbar {
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px;
+  }
+  .run { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .act { font-weight: 700; color: #ffb84c; letter-spacing: 1px; white-space: nowrap; }
+  .pips { display: flex; gap: 5px; align-items: center; }
+  .pip { width: 10px; height: 10px; border-radius: 2px; background: #2a2442; border: 1px solid #4a4268; }
+  .pip.done { background: #6a5da8; border-color: #8c7fd0; }
+  .pip.cur { background: var(--green); border-color: #fff; box-shadow: 0 0 8px var(--green); transform: scale(1.25); }
+  .pip.champ, .pip.boss { border-radius: 50%; width: 13px; height: 13px; border-color: var(--gold); }
+  .pip.boss { border-color: var(--pink); }
+  .pip.champ.done, .pip.boss.done { background: #8a6a2a; }
+  .relics { display: flex; gap: 6px; }
+  .relic {
+    width: 38px; height: 38px; border-radius: 6px; font-size: 20px; cursor: pointer; padding: 0;
+    background: #0e0b1c; border: 1px dashed #4a4268; color: var(--muted);
+  }
+  .relic.filled { border-style: solid; border-color: #ffb84c; background: #2a2010; }
+  .topright { display: flex; justify-content: flex-end; align-items: center; gap: 14px; }
+  .gold { color: var(--gold); font-weight: 700; font-size: 18px; }
+  .restart {
+    font-family: inherit; font-size: 12px; padding: 4px 10px; cursor: pointer; color: var(--muted);
+    background: transparent; border: 1px solid var(--line); border-radius: 4px;
+  }
+  .restart:hover { color: var(--ink); border-color: #6a5da8; }
+  .restart.armed { color: #fff; background: #6a1830; border-color: var(--pink); }
 
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 30px; align-items: center; }
+  /* ---- Palco + registro eventi ---- */
+  .stage-area { position: relative; min-height: 0; }
+  .feed {
+    position: absolute; left: 14px; bottom: 10px; z-index: 8; pointer-events: none;
+    display: flex; flex-direction: column-reverse; gap: 2px; font-size: 13px; max-width: 46%;
+    text-shadow: 0 1px 2px #000, 0 0 6px #000;
+  }
+
+  /* ---- Striscia del tiro ---- */
+  .scorebar {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    min-height: 54px; padding: 4px 12px; border-radius: 8px;
+    background: linear-gradient(180deg, #1c1735, #120f24); border: 1px solid var(--line);
+  }
+  .tray { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
   .chip {
-    border-radius: 6px; padding: 3px 10px; border: 1px solid #444; background: #2b2b33; color: #e8e8f0;
-    font-family: inherit; font-size: 14px;
+    border-radius: 6px; padding: 5px 14px; border: 2px solid #4a4268; background: #241f3d; color: var(--ink);
+    font-family: inherit; font-size: 20px; font-weight: 600; min-width: 42px;
     animation: chip-in 0.4s cubic-bezier(.2,1.5,.4,1) both; animation-delay: calc(var(--i) * 70ms);
   }
-  @keyframes chip-in { from { transform: translateY(8px) scale(0.6); opacity: 0; } to { transform: none; opacity: 1; } }
-  .chip.multiplier { border-color: #ff5c8a; color: #ff5c8a; font-weight: bold; box-shadow: 0 0 8px rgba(255,92,138,0.55); }
-  .chip.buff { border-color: #7dff9b; color: #7dff9b; }
-  .chip.recursive { border-color: #5cd0ff; color: #5cd0ff; }
+  @keyframes chip-in { from { transform: translateY(10px) scale(0.5); opacity: 0; } to { transform: none; opacity: 1; } }
+  .chip.multiplier { border-color: var(--pink); color: var(--pink); font-weight: 700; box-shadow: 0 0 10px rgba(255,92,138,0.55); }
+  .chip.buff { border-color: var(--green); color: var(--green); }
+  .chip.recursive { border-color: var(--cyan); color: var(--cyan); }
   .chip.selectable { cursor: pointer; }
-  .chip.selected { outline: 2px solid #ffb84c; }
-  .formula { margin-left: auto; display: flex; gap: 12px; align-items: baseline; font-size: 13px; }
-  .f-mult { color: #ff5c8a; font-weight: 900; font-size: 18px; text-shadow: 0 0 8px rgba(255,92,138,0.6); }
-  .formula.hot .f-mult { font-size: 24px; color: #ffb84c; text-shadow: 0 0 12px rgba(255,150,0,0.8); }
-  .f-pow b { color: #ffd84c; font-size: 16px; }
-  .reroll-hint { font-size: 12px; color: #ffb84c; display: flex; gap: 6px; align-items: center; }
-  .mini { font-size: 11px; padding: 2px 8px; cursor: pointer; background: #33333f; color: inherit; border: 1px solid #555; border-radius: 4px; }
+  .chip.selected { outline: 3px solid #ffb84c; outline-offset: 2px; }
+  .formula { display: flex; gap: 18px; align-items: baseline; white-space: nowrap; }
+  .f-mult { color: var(--pink); font-weight: 700; font-size: 26px; text-shadow: 0 0 10px rgba(255,92,138,0.6); }
+  .formula.hot .f-mult { font-size: 34px; color: #ffb84c; text-shadow: 0 0 14px rgba(255,150,0,0.85); }
+  .f-pow small { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 2px; }
+  .f-pow b { color: var(--gold); font-size: 28px; font-weight: 700; }
+  .reroll-hint { font-size: 14px; color: #ffb84c; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
-  .skills { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
-  .skill {
-    display: flex; flex-direction: column; align-items: center; gap: 2px;
-    background: #3d1f4f; color: #ffd9e5; border: 1px solid #ff5c8a;
-    border-radius: 8px; padding: 8px 4px; cursor: pointer; font-family: inherit;
+  /* ---- Dock: la mano di carte ---- */
+  .dock { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: end; }
+  .hand { display: grid; grid-template-columns: repeat(4, minmax(0, 210px)); gap: 12px; justify-content: center; }
+  .card {
+    position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    padding: 14px 8px 10px; cursor: pointer; font-family: inherit; color: var(--ink);
+    background: linear-gradient(180deg, #3a1f55, #231238); border: 2px solid var(--pink); border-radius: 10px;
+    box-shadow: 0 4px 0 #14091f; transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
   }
-  .skill:disabled { opacity: 0.35; cursor: default; }
-  .skill .icon { font-size: 20px; }
-  .skill .label { font-size: 12px; font-weight: bold; }
-  .skill .preview { font-size: 14px; font-weight: 900; color: #ffd84c; margin-top: 2px; }
-  .skill .hint { font-size: 10px; opacity: 0.7; }
-
-  .equip-row { display: flex; justify-content: space-between; margin-top: 10px; gap: 12px; }
-  .slots, .inventory { display: flex; gap: 6px; }
-  .slot {
-    width: 36px; height: 36px; border-radius: 8px; font-size: 18px; cursor: pointer;
-    background: #101014; border: 1px dashed #444; color: #666;
+  .card:hover:not(:disabled) { transform: translateY(-8px); box-shadow: 0 12px 0 #14091f, 0 0 18px rgba(255,92,138,0.45); }
+  .card:active:not(:disabled) { transform: translateY(-2px); }
+  .card:focus-visible { outline: 3px solid var(--cyan); outline-offset: 2px; }
+  .card:disabled { opacity: 0.4; cursor: default; filter: saturate(0.5); }
+  .key { position: absolute; top: 6px; left: 8px; }
+  .c-icon { font-size: 34px; line-height: 1; }
+  .c-name { font-size: 15px; font-weight: 700; text-align: center; }
+  .c-preview { font-size: 22px; font-weight: 700; color: var(--gold); text-align: center; min-height: 28px; }
+  .c-hint { font-size: 12px; color: #c9b8e8; opacity: 0.85; text-align: center; }
+  .bag {
+    display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; min-width: 130px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
   }
-  .slot.filled { border-style: solid; border-color: #ffb84c; }
+  .bag-title { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; }
+  .bag-items { display: flex; flex-wrap: wrap; gap: 6px; max-width: 170px; }
   .inv-item {
-    width: 32px; height: 32px; border-radius: 8px; font-size: 16px; cursor: pointer;
+    width: 34px; height: 34px; border-radius: 6px; font-size: 18px; cursor: pointer; padding: 0;
     background: #1f3d2a; border: 1px solid #4cc94c;
   }
+  .inv-item:hover { transform: translateY(-2px); }
 
-  .log { font-size: 12px; opacity: 0.8; display: flex; flex-direction: column; gap: 2px; min-height: 80px; }
+  /* ---- Schermi stretti (telefono in verticale) ---- */
+  @media (max-width: 760px) {
+    .game { height: auto; min-height: 100%; grid-template-rows: auto minmax(260px, 40vh) auto auto; gap: 6px; padding: 6px 8px 8px; }
+    .topbar { grid-template-columns: 1fr auto; gap: 6px 8px; padding: 6px 8px; }
+    .act { font-size: 13px; }
+    .pips { gap: 3px; }
+    .pip { width: 8px; height: 8px; }
+    .pip.champ, .pip.boss { width: 10px; height: 10px; }
+    .relics { grid-column: 1 / -1; order: 3; justify-content: center; gap: 4px; }
+    .relic { width: 30px; height: 30px; font-size: 16px; }
+    .restart { display: none; }
+    .scorebar { flex-direction: column; align-items: stretch; gap: 4px; min-height: 0; padding: 6px 8px; }
+    .chip { font-size: 16px; padding: 3px 10px; min-width: 34px; }
+    .f-mult { font-size: 20px; }
+    .formula.hot .f-mult { font-size: 24px; }
+    .f-pow b { font-size: 22px; }
+    .formula { justify-content: space-between; }
+    .dock { grid-template-columns: 1fr; }
+    .hand { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .card { padding: 8px 6px 6px; flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 2px 8px; }
+    .c-icon { font-size: 24px; }
+    .c-name { font-size: 13px; }
+    .c-preview { font-size: 17px; min-height: 0; flex-basis: 100%; }
+    .c-hint { display: none; }
+    .key { display: none; }
+    .bag { flex-direction: row; align-items: center; padding: 4px 8px; }
+    .feed { font-size: 11px; max-width: 70%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .chip, .card { animation: none; transition: none; }
+  }
 
   .overlay {
     position: fixed; inset: 0; background: rgba(10, 10, 14, 0.85);
     display: flex; align-items: center; justify-content: center; z-index: 10;
   }
   .overlay-box {
-    background: #1a1a22; border: 1px solid #ff5c8a; border-radius: 12px;
+    background: linear-gradient(180deg, #1d1736, #130f26); border: 2px solid #ff5c8a; border-radius: 12px;
     padding: 28px 40px; text-align: center; display: flex; flex-direction: column; gap: 12px;
+    max-height: 92vh; overflow-y: auto; box-shadow: 0 10px 40px rgba(0,0,0,0.6);
   }
+  .overlay-box h2 { margin: 0; letter-spacing: 1px; }
+  /* pulsanti d'azione dell'overlay (Prossimo incontro, Continua...) in tema col gioco */
+  .overlay-box > button {
+    font-family: inherit; font-size: 16px; font-weight: 600; padding: 10px 18px; cursor: pointer;
+    color: #fff; background: linear-gradient(180deg, #3a1f55, #231238);
+    border: 2px solid #ff5c8a; border-radius: 8px; box-shadow: 0 3px 0 #14091f;
+  }
+  .overlay-box > button:hover { filter: brightness(1.2); }
+  .overlay-box > button:focus-visible { outline: 3px solid #5cd0ff; outline-offset: 2px; }
+  @media (max-width: 760px) { .overlay-box { padding: 18px 14px; width: calc(100% - 24px); box-sizing: border-box; } .shop-box, .forge-box { min-width: 0; } }
 
-  /* ---- Meta: runbar e shop ---- */
-  .runbar {
-    display: flex; justify-content: space-between; align-items: center;
-    background: #14141a; border: 1px solid #33333f; border-radius: 8px; padding: 6px 14px;
-  }
-  .runlabel { font-weight: bold; color: #ffb84c; }
-  .gold { color: #ffd84c; }
+  /* ---- Meta: shop ---- */
   .unlock { color: #7dff9b; font-weight: bold; }
   .shop-box { min-width: 420px; }
   .offers { display: flex; flex-direction: column; gap: 8px; }

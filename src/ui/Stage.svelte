@@ -65,20 +65,34 @@
   }
   onDestroy(() => { unsub(); timers.forEach(clearTimeout); });
 
+  /** misure reali del palco: tutto si ridimensiona con lo spazio disponibile */
+  let H = 420;
+  let W = 1000;
+  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
   $: tier = $enemyInfo.tier;
   /** altezza a schermo desiderata (px): i personaggi restano proporzionati
    *  qualunque sia la risoluzione nativa della sprite */
-  $: targetH = tier === 'boss' ? 215 : tier === 'champion' ? 185 : 160;
-  $: scale = Math.max(3, Math.round(targetH / SPRITES[$enemyInfo.sprite].size));
+  // il disegno occupa ~65% del riquadro della sprite: i fattori lo compensano
+  $: targetH = H * (tier === 'boss' ? 0.78 : tier === 'champion' ? 0.66 : 0.56);
+  // scale intere: i pixel restano nitidi a qualunque risoluzione
+  $: scale = clamp(Math.round(targetH / SPRITES[$enemyInfo.sprite].size), 3, 14);
   $: enemyW = scale * SPRITES[$enemyInfo.sprite].size;
-  const HERO_SCALE = 6;
+  $: heroScale = clamp(Math.round((H * 0.64) / SPRITES.hero.size), 3, 14);
+  $: heroW = heroScale * SPRITES.hero.size;
+  $: hudW = clamp(Math.round(W * 0.24), 150, 320);
+  $: ui = clamp(H / 420, 0.7, 1.6); // fattore per testi ed effetti
   $: enemyFilter = $enemyInfo.hue
     ? `hue-rotate(${$enemyInfo.hue}deg)` : '';
   $: dead = $battleResult === 'victory';
   $: lost = $battleResult === 'defeat';
 </script>
 
-<section class="stage act{$actLevel}" class:shake={shaking} aria-label="Campo di battaglia">
+<section
+  class="stage act{$actLevel}" class:shake={shaking} aria-label="Campo di battaglia"
+  bind:clientHeight={H} bind:clientWidth={W}
+  style="--ui:{ui}; --hud-w:{hudW}px"
+>
   <div class="layer far"></div>
   <div class="layer fog"></div>
   <div class="layer near"></div>
@@ -127,9 +141,9 @@
   <!-- ===== Goblin (sinistra) ===== -->
   <div class="slot player-slot">
     <div class="body player-body {playerAnim}" class:dead={lost}>
-      <Sprite id="hero" scale={HERO_SCALE} />
+      <Sprite id="hero" scale={heroScale} />
     </div>
-    <div class="shadow" style="width:150px"></div>
+    <div class="shadow" style="width:{heroW * 0.8}px"></div>
   </div>
 
   <!-- ===== Dadi 3D: il canvas del GameManager vive sopra il palco ===== -->
@@ -137,7 +151,7 @@
 
   <!-- ===== Numeri fluttuanti ===== -->
   {#each floaters as f (f.key)}
-    <div class="floater {f.kind} {f.side}" style="--dx:{f.dx}px; font-size:{f.fs}px">{f.text}</div>
+    <div class="floater {f.kind} {f.side}" style="--dx:{f.dx}px; font-size:{Math.round(f.fs * ui)}px">{f.text}</div>
   {/each}
 
   <!-- ===== Lampo e annuncio a tutto palco ===== -->
@@ -159,7 +173,7 @@
 
 <style>
   .stage {
-    position: relative; height: 380px; overflow: hidden; border-radius: 10px;
+    position: relative; height: 100%; min-height: 240px; overflow: hidden; border-radius: 10px;
     border: 1px solid #33333f; background: #0d0d14; isolation: isolate;
     --sky-a: #1a1530; --sky-b: #2d1f45; --floor-a: #2a2236; --floor-b: #17121f;
   }
@@ -169,13 +183,26 @@
   .layer, .floor { position: absolute; left: 0; right: 0; }
   /* il canvas 3D passato nello slot copre tutto il palco, senza intercettare i clic */
   .stage :global(canvas.arena) { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 4; pointer-events: none; }
-  .far { inset: 0; background: linear-gradient(180deg, var(--sky-a), var(--sky-b) 70%); }
+  /* cielo: luna con alone, qualche stella, sfumatura per Atto */
+  .far {
+    inset: 0;
+    background:
+      radial-gradient(circle at 50% 24%, rgba(255,246,214,0.95) 0 calc(22px * var(--ui)), rgba(255,246,214,0.22) calc(24px * var(--ui)) calc(54px * var(--ui)), transparent calc(120px * var(--ui))),
+      radial-gradient(1.6px 1.6px at 9% 16%, #fff, transparent),
+      radial-gradient(1.6px 1.6px at 21% 34%, #dfd6ff, transparent),
+      radial-gradient(1.6px 1.6px at 33% 12%, #fff, transparent),
+      radial-gradient(1.6px 1.6px at 67% 20%, #fff, transparent),
+      radial-gradient(1.6px 1.6px at 78% 38%, #dfd6ff, transparent),
+      radial-gradient(1.6px 1.6px at 90% 14%, #fff, transparent),
+      radial-gradient(1.6px 1.6px at 58% 40%, #fff, transparent),
+      linear-gradient(180deg, var(--sky-a), var(--sky-b) 70%);
+  }
   /* guglie lontane: triangoli via gradienti, nessun asset */
   .near {
-    bottom: 140px; height: 120px;
+    bottom: 34%; height: 28%;
     background:
-      linear-gradient(135deg, transparent 49%, rgba(8,8,14,0.85) 50%) 0 100% / 90px 90px repeat-x,
-      linear-gradient(225deg, transparent 49%, rgba(8,8,14,0.85) 50%) 45px 100% / 90px 90px repeat-x;
+      linear-gradient(135deg, transparent 49%, rgba(8,8,14,0.85) 50%) 0 100% / calc(110px * var(--ui)) calc(110px * var(--ui)) repeat-x,
+      linear-gradient(225deg, transparent 49%, rgba(8,8,14,0.85) 50%) calc(55px * var(--ui)) 100% / calc(110px * var(--ui)) calc(110px * var(--ui)) repeat-x;
     opacity: 0.7;
     animation: drift 40s linear infinite;
   }
@@ -186,16 +213,16 @@
     animation: fogmove 18s ease-in-out infinite alternate;
   }
   .floor {
-    bottom: 0; height: 150px;
+    bottom: 0; height: 36%;
     background:
       repeating-linear-gradient(90deg, transparent 0 47px, rgba(0,0,0,0.25) 47px 48px),
       linear-gradient(180deg, var(--floor-a), var(--floor-b));
     border-top: 2px solid rgba(255,255,255,0.06);
   }
 
-  .slot { position: absolute; bottom: 30px; display: flex; flex-direction: column; align-items: center; }
-  .player-slot { left: 12%; }
-  .enemy-slot { right: 12%; }
+  .slot { position: absolute; bottom: 9%; display: flex; flex-direction: column; align-items: center; }
+  .player-slot { left: 7%; }
+  .enemy-slot { right: 7%; }
   .body { position: relative; z-index: 2; transition: opacity 0.6s, transform 0.6s, filter 0.2s; }
   .shadow {
     height: 14px; margin-top: -10px; border-radius: 50%; z-index: 1;
@@ -218,41 +245,41 @@
   @keyframes guard { 0% { filter: drop-shadow(0 0 0 #5cd0ff); } 40% { filter: drop-shadow(0 0 12px #5cd0ff) brightness(1.3); } 100% { filter: none; } }
 
   /* HUD sul palco */
-  .hud { position: absolute; top: 10px; width: 230px; z-index: 3; }
+  .hud { position: absolute; top: calc(10px * var(--ui)); width: var(--hud-w); z-index: 3; }
   .player-hud { left: 14px; }
   .enemy-hud { right: 14px; }
   .who { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
-  .nm { font-weight: bold; font-size: 13px; text-shadow: 0 1px 2px #000; }
+  .nm { font-weight: 700; font-size: calc(15px * var(--ui)); text-shadow: 0 1px 2px #000; }
   .nm.champ { color: #ffd84c; }
   .nm.boss { color: #ff7a9c; }
-  .status { font-size: 11px; display: flex; gap: 6px; }
-  .bar { height: 10px; background: rgba(8,8,14,0.85); border: 1px solid #000; border-radius: 3px; overflow: hidden; margin-top: 3px; }
+  .status { font-size: calc(12px * var(--ui)); display: flex; gap: 6px; }
+  .bar { height: calc(12px * var(--ui)); background: rgba(8,8,14,0.85); border: 1px solid #000; border-radius: 3px; overflow: hidden; margin-top: 3px; }
   .fill { height: 100%; transition: width 0.45s ease; }
   .efill { background: linear-gradient(90deg, #ff5c5c, #ff9b5c); }
   .pfill { background: linear-gradient(90deg, #4cc94c, #7dff9b); }
-  .nums { font-size: 11px; opacity: 0.85; text-align: right; text-shadow: 0 1px 2px #000; }
+  .nums { font-size: calc(12px * var(--ui)); opacity: 0.85; text-align: right; text-shadow: 0 1px 2px #000; }
 
   .bubble {
     position: relative; z-index: 3; margin-bottom: 6px; padding: 3px 12px;
     background: #2b1520; border: 2px solid #ff5c8a; border-radius: 10px;
-    display: flex; gap: 6px; align-items: baseline; font-size: 13px;
+    display: flex; gap: 6px; align-items: baseline; font-size: calc(15px * var(--ui));
     animation: bob 1.8s ease-in-out infinite;
   }
   .bubble::after {
     content: ''; position: absolute; left: 50%; bottom: -8px; margin-left: -6px;
     border: 6px solid transparent; border-top-color: #ff5c8a; border-bottom: 0;
   }
-  .bl { opacity: 0.8; font-size: 11px; }
+  .bl { opacity: 0.8; font-size: calc(12px * var(--ui)); }
   @keyframes bob { 50% { transform: translateY(-3px); } }
 
   /* numeri di danno */
   .floater {
-    position: absolute; bottom: 200px; z-index: 5; font-weight: 900; font-size: 30px;
+    position: absolute; bottom: 52%; z-index: 5; font-weight: 700; font-size: 30px;
     text-shadow: 0 2px 0 #000, 0 0 10px rgba(0,0,0,0.8); pointer-events: none;
     animation: floatup 1.4s ease-out forwards;
   }
-  .floater.enemy { right: calc(12% + 50px); bottom: 250px; }
-  .floater.player { left: calc(12% + 40px); }
+  .floater.enemy { right: calc(7% + 50px); bottom: 66%; }
+  .floater.player { left: calc(7% + 40px); }
   .floater.hit.enemy { color: #ffd84c; }
   .floater.hit.player { color: #ff5c5c; }
   .floater.shield { color: #5cd0ff; }
@@ -286,15 +313,15 @@
     animation: burst-in 1.4s cubic-bezier(.2,1.4,.4,1) forwards;
   }
   .burst.overflow { animation-duration: 2.3s; }
-  .b-main { font-weight: 900; letter-spacing: 1px; text-shadow: 0 3px 0 #000, 0 0 18px rgba(0,0,0,0.9); font-size: 54px; }
-  .b-sub { font-weight: 900; font-size: 15px; letter-spacing: 4px; color: #ff9bb4; text-shadow: 0 2px 0 #000; }
-  .burst.t1 .b-main { color: #ffc2dd; font-size: 46px; }
-  .burst.t2 .b-main { color: #ff7ab0; font-size: 60px; }
-  .burst.t3 .b-main { color: #ffb84c; font-size: 76px; text-shadow: 0 3px 0 #000, 0 0 26px #ff8a00; }
-  .burst.t4 .b-main { color: #fff; font-size: 92px; text-shadow: 0 3px 0 #000, 0 0 34px #ff2d6f, 0 0 60px #ff2d6f; }
+  .b-main { font-weight: 700; letter-spacing: 1px; text-shadow: 0 3px 0 #000, 0 0 18px rgba(0,0,0,0.9); font-size: calc(54px * var(--ui)); }
+  .b-sub { font-weight: 700; font-size: calc(15px * var(--ui)); letter-spacing: 4px; color: #ff9bb4; text-shadow: 0 2px 0 #000; }
+  .burst.t1 .b-main { color: #ffc2dd; font-size: calc(46px * var(--ui)); }
+  .burst.t2 .b-main { color: #ff7ab0; font-size: calc(60px * var(--ui)); }
+  .burst.t3 .b-main { color: #ffb84c; font-size: calc(76px * var(--ui)); text-shadow: 0 3px 0 #000, 0 0 26px #ff8a00; }
+  .burst.t4 .b-main { color: #fff; font-size: calc(92px * var(--ui)); text-shadow: 0 3px 0 #000, 0 0 34px #ff2d6f, 0 0 60px #ff2d6f; }
   /* overflow: testo con separazione RGB e vibrazione */
   .burst.overflow .b-main {
-    color: #fff; font-size: 70px; position: relative;
+    color: #fff; font-size: calc(70px * var(--ui)); position: relative;
     text-shadow: 3px 0 #ff2d6f, -3px 0 #2de2ff, 0 4px 0 #000;
     animation: jitter 0.08s steps(2) infinite;
   }
@@ -312,12 +339,11 @@
     padding: 2px 12px; border: 1px solid #ff5c8a; border-radius: 4px; background: rgba(40,8,20,0.8);
     animation: jitter 0.1s steps(2) infinite;
   }
-  @keyframes drift { to { background-position: -90px 100%, -45px 100%; } }
+  @keyframes drift { to { background-position: -110px 100%, -55px 100%; } }
   @keyframes fogmove { to { transform: translateX(40px); } }
 
   @media (max-width: 640px) {
-    .stage { height: 330px; }
-    .hud { width: 150px; }
+    .hud { width: var(--hud-w); }
     .player-slot { left: 2%; } .enemy-slot { right: 2%; }
   }
   @media (prefers-reduced-motion: reduce) {
