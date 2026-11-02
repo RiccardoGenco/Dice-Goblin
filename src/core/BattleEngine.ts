@@ -159,8 +159,8 @@ export class BattleEngine {
     this.rerollsLeft = 0;
 
     // Applica il veleno al nemico (calcolato in Decimal)
-    this.tickPoison(this.enemy);
-    this.tickPoison(this.player);
+    this.tickPoison(this.enemy, false); // lo scudo nemico resta fino al suo prossimo turno
+    this.tickPoison(this.player, true);
 
     if (await this.checkBattleEnd()) return;
 
@@ -428,6 +428,7 @@ export class BattleEngine {
     await this.setState(BattleState.ENEMY_PHASE);
     const intent = this.currentIntent;
     if (!intent) return;
+    this.enemy.shield = new Decimal(0); // il vecchio scudo del nemico scade ora
 
     switch (intent.type) {
       case IntentType.ATTACK: {
@@ -469,13 +470,13 @@ export class BattleEngine {
     target.hp = target.hp.minus(amount.minus(absorbed));
   }
 
-  private tickPoison(c: Combatant): void {
+  private tickPoison(c: Combatant, clearShield: boolean): void {
     if (c.poison.turnsLeft > 0) {
       c.hp = c.hp.minus(c.poison.perTurn);
       c.poison.turnsLeft--;
     }
-    // Gli scudi temporanei scadono a inizio turno
-    c.shield = new Decimal(0);
+    // Lo scudo di ciascuno scade all'inizio del PROPRIO turno
+    if (clearShield) c.shield = new Decimal(0);
   }
 
   /** IA deterministica minimale per l'MVP: pattern ciclico basato

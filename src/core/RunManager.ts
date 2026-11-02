@@ -15,24 +15,25 @@ export const ENCOUNTERS_PER_ACT = 10;
  *  il 10° è il Boss d'Atto. */
 export const BOSS_INTERVAL = 5;
 export const TOTAL_ACTS = 3;
-export const GOLD_REWARD_BASE = 12; // TUNING: 10 -> 12
 export const CHAMPION_GOLD_MULTIPLIER = 2;
 export const BOSS_GOLD_MULTIPLIER = 3;
 /** Amplificazione delle stat nemiche nelle boss fight */
-export const CHAMPION_STAT_MULTIPLIER = 1.7; // TUNING: 1.8 -> 1.7
-export const BOSS_STAT_MULTIPLIER = 2.2; // TUNING: 2.5 -> 2.2
+export const CHAMPION_STAT_MULTIPLIER = 1.5; // TUNING: 1.8 -> 1.7 -> 1.5
+export const BOSS_STAT_MULTIPLIER = 1.8; // TUNING: 2.5 -> 2.2 -> 1.8
 
 export interface RunState {
   act: number;       // 1..TOTAL_ACTS
   encounter: number; // 1..ENCOUNTERS_PER_ACT (l'ultimo è il boss)
   gold: Decimal;
   purchases: number; // acquisti effettuati (inasprisce i costi shop)
+  /** HP del goblin come frazione del massimo, portati da un incontro all'altro */
+  hpRatio: number;
 }
 
 export type AdvanceResult = 'next-encounter' | 'act-completed' | 'run-completed';
 
 export function freshRunState(): RunState {
-  return { act: 1, encounter: 1, gold: new Decimal(0), purchases: 0 };
+  return { act: 1, encounter: 1, gold: new Decimal(0), purchases: 0, hpRatio: 1 };
 }
 
 export class RunManager {
@@ -76,7 +77,7 @@ export class RunManager {
    *  — in sincrono con lo sconto del Mercante Reale. */
   public goldReward(): Decimal {
     const growth = new Decimal(BALANCE.GOLD_REWARD_GROWTH).pow(this.level);
-    const base = new Decimal(GOLD_REWARD_BASE).times(growth);
+    const base = new Decimal(BALANCE.GOLD_REWARD_BASE).times(growth);
     if (this.isActBoss) return base.times(BOSS_GOLD_MULTIPLIER);
     if (this.isChampion) return base.times(CHAMPION_GOLD_MULTIPLIER);
     return base;

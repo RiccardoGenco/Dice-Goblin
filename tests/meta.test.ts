@@ -52,7 +52,7 @@ describe('RunManager — struttura ad Atti (MVP §1)', () => {
 
   it('Campione paga x2 e Boss x3 rispetto a un incontro normale', () => {
     const at = (encounter: number) =>
-      new RunManager({ act: 1, encounter, gold: new Decimal(0), purchases: 0 });
+      new RunManager({ act: 1, encounter, gold: new Decimal(0), purchases: 0, hpRatio: 1 });
     // Normalizzo per la crescita 1.5^level per isolare i moltiplicatori
     const norm = (enc: number) =>
       at(enc).goldReward().div(new Decimal(1.5).pow(enc - 1)).toNumber();
@@ -61,13 +61,13 @@ describe('RunManager — struttura ad Atti (MVP §1)', () => {
   });
 
   it('il terzo boss completa la run', () => {
-    const run = new RunManager({ act: TOTAL_ACTS, encounter: ENCOUNTERS_PER_ACT, gold: new Decimal(0), purchases: 0 });
+    const run = new RunManager({ act: TOTAL_ACTS, encounter: ENCOUNTERS_PER_ACT, gold: new Decimal(0), purchases: 0, hpRatio: 1 });
     expect(run.advance()).toBe('run-completed');
   });
 
   it("la ricompensa cresce di 1.5^level (stessa curva dei costi shop)", () => {
     const runA = new RunManager();
-    const runB = new RunManager({ act: 1, encounter: 4, gold: new Decimal(0), purchases: 0 });
+    const runB = new RunManager({ act: 1, encounter: 4, gold: new Decimal(0), purchases: 0, hpRatio: 1 });
     const ratio = runB.goldReward().div(runA.goldReward()).toNumber();
     expect(ratio).toBeCloseTo(1.5 ** 3, 6);
   });
@@ -154,7 +154,7 @@ describe('SaveManager — round-trip run e meta (GDD §2.2)', () => {
       createDieFromBlueprint(UNLOCKABLE_DICE[0]!)
     ];
     save.saveRun({
-      run: { act: 2, encounter: 7, gold: new Decimal('3.5e12'), purchases: 3 },
+      run: { act: 2, encounter: 7, gold: new Decimal('3.5e12'), purchases: 3, hpRatio: 0.6 },
       playerStats: { str: new Decimal('1e40'), int: new Decimal(2), vit: new Decimal(50), lck: 30 },
       bag,
       equipmentIds: ['anello-bruto', 'idolo-goblin']
@@ -163,6 +163,7 @@ describe('SaveManager — round-trip run e meta (GDD §2.2)', () => {
     const loaded = save.loadRun();
     expect(loaded).not.toBeNull();
     expect(loaded!.run.act).toBe(2);
+    expect(loaded!.run.hpRatio).toBeCloseTo(0.6, 6); // gli HP si portano nel salvataggio
     expect(loaded!.run.gold.eq(new Decimal('3.5e12'))).toBe(true);
     expect(loaded!.playerStats.str.eq(new Decimal('1e40'))).toBe(true);
     expect(typeof loaded!.playerStats.str.times).toBe('function'); // prototipo OK

@@ -195,13 +195,14 @@ export class GameManager {
         ? CHAMPION_STAT_MULTIPLIER
         : 1;
     const enemyStats: CombatantStats = {
-      str: new Decimal(3).times(strGrowth).times(bossMult),
+      str: new Decimal(BALANCE.ENEMY_BASE_STR).times(strGrowth).times(bossMult),
       int: new Decimal(1).times(strGrowth).times(bossMult),
-      vit: new Decimal(8).times(hpGrowth).times(bossMult),
+      vit: new Decimal(BALANCE.ENEMY_BASE_VIT).times(hpGrowth).times(bossMult),
       lck: 0
     };
 
     this.engine = new BattleEngine(this.playerStats, enemyStats, this.bag);
+    this.engine.player.hp = this.engine.player.maxHp.times(this.run.state.hpRatio);
     this.syncEquipment();
     this.registerListeners();
     this.pickEnemyLook();
@@ -414,6 +415,10 @@ export class GameManager {
 
     // Le boss fight aprono gli intermezzi SPECIALI (specs §7.bis/§10):
     // Campione -> bivio dorato; Boss d'Atto -> Mercante Reale + Gran Forgia
+    const wasBossFight = this.run.isBossFight;
+    const ratio = this.engine.player.hp.div(Decimal.max(this.engine.player.maxHp, 1)).toNumber();
+    this.run.state.hpRatio = wasBossFight ? 1 : Math.min(1, Math.max(0.05, ratio) + BALANCE.HEAL_PER_WIN);
+    pushLog(wasBossFight ? '🩹 Riposo: HP al massimo' : `🩹 Recuperi ${Math.round(BALANCE.HEAL_PER_WIN * 100)}% degli HP`);
     const wasChampion = this.run.isChampion;
     const wasActBoss = this.run.isActBoss;
     const beatenAct = this.run.state.act;

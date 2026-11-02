@@ -41,7 +41,7 @@ interface SavedFace { v: string; t: number; e?: string }
 interface SavedDie { rarity: number; blueprintId?: string; faces: SavedFace[] }
 interface SavedRun {
   version: 1;
-  run: { act: number; encounter: number; gold: string; purchases: number };
+  run: { act: number; encounter: number; gold: string; purchases: number; hpRatio?: number };
   playerStats: { str: string; int: string; vit: string; lck: number };
   bag: SavedDie[];
   equipmentIds: string[];
@@ -104,7 +104,8 @@ export class SaveManager {
         act: snapshot.run.act,
         encounter: snapshot.run.encounter,
         gold: serializeDecimal(snapshot.run.gold),
-        purchases: snapshot.run.purchases
+        purchases: snapshot.run.purchases,
+        hpRatio: snapshot.run.hpRatio
       },
       playerStats: {
         str: serializeDecimal(snapshot.playerStats.str),
@@ -130,7 +131,8 @@ export class SaveManager {
         act: data.run.act,
         encounter: data.run.encounter,
         gold: hydrateDecimal(data.run.gold),
-        purchases: data.run.purchases
+        purchases: data.run.purchases,
+        hpRatio: Math.min(1, Math.max(0.05, data.run.hpRatio ?? 1))
       };
       return {
         run,

@@ -162,7 +162,12 @@ export const BALANCE = {
   /** Scaling esponenziale HP nemici per incontro.
    *  TUNING (balance sim): 1.6 -> 1.42. Con 30 incontri, 1.6^29
    *  richiedeva una crescita del giocatore irraggiungibile. */
-  ENEMY_HP_GROWTH: 1.38,
+  ENEMY_HP_GROWTH: 1.24,
+  /** Stat nemiche all'incontro 0 (poi crescono per livello) */
+  ENEMY_BASE_STR: 5,
+  ENEMY_BASE_VIT: 12,
+  /** Quota di HP massimi recuperata dopo ogni vittoria (le boss fight curano del tutto) */
+  HEAL_PER_WIN: 0.2,
   /** La FORZA nemica cresce più piano degli HP: la difesa del
    *  giocatore (VIT/scudi/pozioni) ha meno leve dell'attacco. */
   ENEMY_STR_GROWTH: 1.22,
@@ -172,6 +177,8 @@ export const BALANCE = {
   SHOP_COST_GROWTH: 1.28,
   /** Crescita del reddito per incontro (oro) */
   GOLD_REWARD_GROWTH: 1.5,
+  /** Oro dell'incontro 0 (poi cresce di GOLD_REWARD_GROWTH per livello) */
+  GOLD_REWARD_BASE: 90,
   /** HP = vit * 10 */
   HP_PER_VIT: 10
 } as const;
