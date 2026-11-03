@@ -2,6 +2,10 @@
 
 Dice Bag Builder roguelike incrementale con scaling esponenziale ispirato alla filosofia dei moltiplicatori di *Balatro*.
 
+## Gioca online
+
+Il gioco è pubblicato su GitHub Pages: https://riccardogenco.github.io/Dice-Goblin/ (funziona anche da telefono, in verticale e in orizzontale).
+
 ## Architettura
 
 Il principio guida è il **disaccoppiamento totale logica/grafica**: `src/core/` è TypeScript puro (nessun import da Three.js, Cannon-es o Svelte) e decide ogni risultato *a monte*. Il layer grafico (Fisica Guidata, Approccio B) si limita a "recitare" i lanci già estratti.
