@@ -509,6 +509,25 @@
     .tcard .tip { white-space: normal; text-align: center; max-width: 100px; }
     .rule { font-size: 13px; max-width: 280px; }
   }
+  /* telefono in orizzontale: palco basso e largo, carte del telegrafo piccole, due sole */
+  @media (orientation: landscape) and (max-height: 520px) {
+    .stage { min-height: 0; border-width: 3px; border-radius: 14px; }
+    .hud { padding: 3px 8px; top: 6px; }
+    .nm { font-size: 14px; } .nums { font-size: 12px; } .status { font-size: 12px; }
+    .bar { height: 12px; border-width: 2px; }
+    .track { top: 68px; gap: 2px; }
+    .track-title { display: none; }
+    .tcard .tip { display: none; }
+    .tcard { min-width: 56px; padding: 3px 5px; }
+    .tcard.now { min-width: 88px; transform: none; }
+    .tcard.n1, .tcard.n2, .chev.loop { display: none; }
+    .tcard .tag { font-size: 10px; padding-top: 3px; }
+    .tcard .ti { font-size: 16px; } .tcard.now .ti { font-size: 20px; }
+    .tcard .tl { font-size: 12px; } .tcard .tv { font-size: 15px; } .tcard.now .tv { font-size: 19px; }
+    .tcard .tip { font-size: 11px; white-space: normal; text-align: center; max-width: 90px; }
+    .rule { display: none; }
+    .floater { font-size: 26px; }
+  }
   @media (prefers-reduced-motion: reduce) {
     .near, .fog, .tcard, .shake, .ovf-tag, .burst.overflow .b-main { animation: none; }
   }

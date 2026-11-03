@@ -956,7 +956,7 @@
 
   /* ---- Telefono in verticale: tutta la battaglia in una schermata, senza scorrere ----
      barra alta compatta (2 righe) → palco che prende lo spazio avanzato → dadi → 4 azioni in 2x2 */
-  @media (max-width: 760px) {
+  @media (max-width: 760px) and (orientation: portrait) {
     .game { height: 100dvh; min-height: 0; overflow: hidden; grid-template-rows: auto minmax(180px, 1fr) auto auto; gap: 6px; padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); }
     .topbar { grid-template-columns: auto 1fr; gap: 4px 8px; padding: 5px 8px; border-radius: 12px; }
     .run { gap: 8px; }
@@ -998,7 +998,7 @@
   }
   /* schermi molto stretti o bassi: si toglie il superfluo per tenere tutto in vista */
   @media (max-width: 380px) { .no-s { display: none; } .act { font-size: 12px; padding: 1px 7px; } }
-  @media (max-width: 760px) and (max-height: 700px) {
+  @media (max-width: 760px) and (orientation: portrait) and (max-height: 700px) {
     .relics { display: none; }
     .f-pow small, .hand-slots small { display: none; }
     .tray { padding-top: 8px; gap: 5px; }
@@ -1007,6 +1007,56 @@
     .c-preview { font-size: 17px; } .c-name { font-size: 14px; } .c-icon { font-size: 20px; }
     .c-alert { display: none; }
     .feed { display: none; }
+  }
+  /* ---- Telefono in orizzontale: palco a sinistra, dadi e azioni a destra ---- */
+  @media (orientation: landscape) and (max-height: 520px) {
+    .game {
+      height: 100dvh; max-width: none; overflow: hidden; padding: 4px max(8px, env(safe-area-inset-right)) 4px max(8px, env(safe-area-inset-left)); gap: 6px;
+      grid-template-columns: minmax(0, 1fr) clamp(300px, 40vw, 400px); grid-template-rows: auto minmax(0, 1fr) auto;
+      grid-template-areas: 'top top' 'stage score' 'stage dock';
+    }
+    .topbar { grid-area: top; padding: 3px 10px; gap: 10px; border-radius: 12px; box-shadow: 0 3px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.16); }
+    .stage-area { grid-area: stage; }
+    .scorebar { grid-area: score; }
+    .dock { grid-area: dock; }
+    .act { font-size: 13px; padding: 0 9px; }
+    .pips { gap: 2px; } .pip { width: 7px; height: 7px; border-width: 1.5px; box-shadow: none; } .pip.champ, .pip.boss { width: 10px; height: 10px; }
+    .relics { zoom: 0.5; gap: 4px; padding: 2px 6px; justify-self: center; }
+    .fam { font-size: 17px; }
+    .topright { gap: 5px; flex-wrap: nowrap; }
+    .gold { font-size: 17px; padding: 0 9px 0 5px; box-shadow: 0 2px 0 var(--ink); }
+    .restart { padding: 2px 8px; font-size: 0; box-shadow: 0 2px 0 var(--ink); }
+    .restart :global(.gi) { font-size: 17px; }
+    .no-m { display: none; }
+    .scorebar { flex-direction: column; align-items: stretch; justify-content: center; gap: 6px; min-height: 0; padding: 6px 10px; box-shadow: 0 3px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.16); }
+    .tray { gap: 6px; padding-top: 8px; justify-content: center; }
+    .chip { min-width: 40px; height: 40px; font-size: 18px; padding: 0 5px; border-radius: 10px; box-shadow: 0 3px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.7); }
+    .chip.selected { transform: translateY(-7px); box-shadow: 0 7px 0 var(--ink), 0 0 0 3px var(--gold), 0 0 12px var(--gold); }
+    .chip.extra { height: 30px; font-size: 14px; }
+    .side { flex-wrap: nowrap; justify-content: space-between; gap: 6px; }
+    .fxsum { font-size: 13px; gap: 4px; } .fxsum > span { padding: 0 7px; }
+    .formula { gap: 8px; padding: 2px 10px; border-radius: 12px; box-shadow: 0 3px 0 var(--ink); }
+    .f-mult { font-size: 18px; padding: 0 7px; } .formula.hot .f-mult { font-size: 22px; }
+    .f-pow small, .hand-slots small { display: none; }
+    .f-pow b { font-size: 28px; }
+    .hand-slots { padding: 2px 10px; font-size: 14px; border-radius: 12px; box-shadow: 0 3px 0 var(--ink); }
+    .hand { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; max-width: none; }
+    .card { padding: 4px 6px 6px; flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0 6px; border-radius: 12px; box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.4); }
+    .c-icon { font-size: 20px; } .c-name { font-size: 14px; }
+    .c-preview { font-size: 16px; min-height: 0; flex-basis: 100%; line-height: 1.1; }
+    .c-alert { display: none; }
+    .c-hint, .key { display: none; }
+    .feed { font-size: 12px; left: 8px; bottom: 6px; max-width: 70%; }
+    .feed div:nth-child(n+2) { display: none; }
+    .coach { bottom: 12px; left: 8px; transform: none; width: min(360px, 46vw); padding: 10px 12px; }
+    .coach p { font-size: 14px; margin-bottom: 8px; } .coach h3 { font-size: 18px; }
+    /* finestre: poca altezza, quindi più larghe che alte */
+    .overlay { padding: 6px; }
+    .overlay-box { --pad-x: 14px; --pad-y: 10px; max-height: 98dvh; gap: 8px; }
+    .overlay-box h2 { font-size: 20px; padding: 7px 12px 6px; }
+    .offers { gap: 8px; }
+    .menu-box { max-width: 520px; }
+    .logo { font-size: 34px; }
   }
   /* col tocco non esiste il passaggio del mouse: niente sollevamenti rimasti "appiccicati" dopo un tap */
   @media (hover: none) {
