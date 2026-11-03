@@ -501,6 +501,8 @@
     .track-title { font-size: 13px; }
     .tcard { min-width: 66px; padding: 4px 6px; }
     .tcard.now { min-width: 104px; transform: none; }
+    .tcard .tag { font-size: 11px; padding-top: 4px; }
+    .tcard .ti { font-size: 18px; } .tcard.now .ti { font-size: 22px; }
     .tcard.n1, .tcard.n2, .chev.loop { display: none; }
     .tcard .tl { font-size: 13px; }
     .tcard .tv { font-size: 18px; } .tcard.now .tv { font-size: 22px; }

@@ -266,14 +266,14 @@
 
     <div class="topright">
       <span class="gold" title="Oro"><Icon e="💰" /> <Counter value={$goldNum} ticks floaty /></span>
-      <button class="restart icon-btn" title={$settings.muted ? 'Attiva i suoni' : 'Silenzia'} aria-label="Suoni"
+      <button class="restart icon-btn no-s" title={$settings.muted ? 'Attiva i suoni' : 'Silenzia'} aria-label="Suoni"
         on:click={() => settings.update(v => ({ ...v, muted: !v.muted }))}><Icon e={$settings.muted ? '🔇' : '🔊'} mono /></button>
       <button class="restart icon-btn" class:on={$settings.fast} title="Modalità veloce: animazioni più rapide" aria-label="Modalità veloce"
         on:click={() => settings.update(v => ({ ...v, fast: !v.fast }))}><Icon e="⏩" mono /></button>
-      <button class="restart icon-btn" class:on={$settings.crt} title="Effetto schermo da vecchio monitor" aria-label="Effetto CRT"
+      <button class="restart icon-btn no-m" class:on={$settings.crt} title="Effetto schermo da vecchio monitor" aria-label="Effetto CRT"
         on:click={() => settings.update(v => ({ ...v, crt: !v.crt }))}><span class="crt-label">CRT</span></button>
       <button class="restart" on:click={() => menuOpen.set(true)}><Icon e="☰" /> Menù</button>
-      <button class="restart" class:armed={restartArmed} on:click={onRestart}>
+      <button class="restart no-m" class:armed={restartArmed} on:click={onRestart}>
         <Rich text={restartArmed ? 'Sicuro? Perdi la run' : '↻ Nuova run'} />
       </button>
     </div>
@@ -954,28 +954,66 @@
   .c-alert.warn { background: var(--gold); color: var(--ink); text-shadow: none; }
   .c-hint { font-size: 14px; color: #fff; opacity: 0.92; text-align: center; line-height: 1.25; }
 
-  /* ---- Schermi stretti (telefono in verticale) ---- */
+  /* ---- Telefono in verticale: tutta la battaglia in una schermata, senza scorrere ----
+     barra alta compatta (2 righe) → palco che prende lo spazio avanzato → dadi → 4 azioni in 2x2 */
   @media (max-width: 760px) {
-    .game { height: auto; min-height: 100%; grid-template-rows: auto minmax(280px, 42vh) auto auto; gap: 8px; padding: 6px 8px 8px; }
-    .topbar { grid-template-columns: 1fr auto; gap: 6px 8px; padding: 6px 8px; }
-    .act { font-size: 15px; }
-    .pips { gap: 3px; }
-    .pip { width: 10px; height: 10px; }
-    .pip.champ, .pip.boss { width: 13px; height: 13px; }
-    .relics { grid-column: 1 / -1; order: 3; justify-content: center; gap: 5px; }
-    .restart { display: none; }
-    .scorebar { flex-direction: column; align-items: stretch; gap: 8px; min-height: 0; padding: 10px; }
-    .tray { gap: 8px; }
-    .chip { min-width: 50px; height: 50px; font-size: 21px; }
-    .f-mult { font-size: 24px; } .formula.hot .f-mult { font-size: 28px; }
-    .f-pow b { font-size: 32px; }
-    .formula { justify-content: space-between; }
-    .side { justify-content: space-between; gap: 8px; }
-    .hand { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-    .card { padding: 8px 6px 8px; flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 2px 8px; }
-    .c-icon { font-size: 28px; } .c-name { font-size: 16px; } .c-preview { font-size: 20px; min-height: 0; flex-basis: 100%; }
+    .game { height: 100dvh; min-height: 0; overflow: hidden; grid-template-rows: auto minmax(180px, 1fr) auto auto; gap: 6px; padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); }
+    .topbar { grid-template-columns: auto 1fr; gap: 4px 8px; padding: 5px 8px; border-radius: 12px; }
+    .run { gap: 8px; }
+    .act { font-size: 14px; padding: 1px 9px; }
+    .pips { gap: 2px; }
+    .pip { width: 6px; height: 6px; border-width: 1.5px; box-shadow: none; }
+    .pips { gap: 1px; } .run { gap: 6px; min-width: 0; } .topright { gap: 4px; }
+    .pip.champ, .pip.boss { width: 9px; height: 9px; }
+    .topright { gap: 5px; flex-wrap: nowrap; }
+    .gold { font-size: 16px; padding: 0 8px 0 5px; box-shadow: 0 2px 0 var(--ink); }
+    .restart { padding: 4px 8px; font-size: 0; box-shadow: 0 2px 0 var(--ink); }
+    .restart :global(.gi) { font-size: 18px; }
+    .no-m { display: none; }
+    .relics { grid-column: 1 / -1; order: 3; justify-self: stretch; justify-content: center; gap: 4px; padding: 2px 6px; zoom: 0.62; }
+    .topright { justify-self: end; }
+    .act { font-size: 13px; }
+    .restart { padding: 3px 6px; }
+    .fam { font-size: 17px; }
+    .scorebar { flex-direction: column; align-items: stretch; gap: 6px; min-height: 0; padding: 8px 10px 8px; box-shadow: 0 3px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.16); }
+    .tray { gap: 7px; padding-top: 10px; justify-content: center; }
+    .chip { min-width: 46px; height: 46px; font-size: 20px; padding: 0 6px; border-radius: 11px; box-shadow: 0 3px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.7); }
+    .chip.selected { transform: translateY(-8px); box-shadow: 0 8px 0 var(--ink), 0 0 0 3px var(--gold), 0 0 14px var(--gold); }
+    .chip.extra { height: 34px; font-size: 15px; }
+    .side { flex-wrap: nowrap; justify-content: space-between; gap: 6px; }
+    .fxsum { font-size: 14px; gap: 4px; } .fxsum > span { padding: 0 8px; }
+    .formula { gap: 8px; padding: 2px 10px; border-radius: 12px; box-shadow: 0 3px 0 var(--ink); }
+    .f-mult { font-size: 20px; padding: 0 8px; } .formula.hot .f-mult { font-size: 24px; }
+    .f-pow small { font-size: 11px; letter-spacing: 2px; margin-bottom: 0; }
+    .f-pow b { font-size: 30px; }
+    .hand-slots { padding: 2px 10px; font-size: 16px; border-radius: 12px; box-shadow: 0 3px 0 var(--ink); } .hand-slots small { font-size: 12px; }
+    .hand { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .card { padding: 6px 6px 7px; flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0 8px; border-radius: 13px; box-shadow: 0 4px 0 var(--ink), inset 0 2px 0 rgba(255, 255, 255, 0.4); }
+    .c-icon { font-size: 24px; } .c-name { font-size: 16px; }
+    .c-preview { font-size: 19px; min-height: 0; flex-basis: 100%; line-height: 1.1; }
+    .c-alert { font-size: 12px; flex-basis: 100%; padding: 0 6px; margin-top: 2px; }
     .c-hint, .key { display: none; }
-    .feed { font-size: 13px; max-width: 76%; }
+    .feed { font-size: 12px; max-width: 80%; left: 8px; bottom: 6px; }
+    .feed div:nth-child(n+2) { display: none; }
+  }
+  /* schermi molto stretti o bassi: si toglie il superfluo per tenere tutto in vista */
+  @media (max-width: 380px) { .no-s { display: none; } .act { font-size: 12px; padding: 1px 7px; } }
+  @media (max-width: 760px) and (max-height: 700px) {
+    .relics { display: none; }
+    .f-pow small, .hand-slots small { display: none; }
+    .tray { padding-top: 8px; gap: 5px; }
+    .chip { min-width: 40px; height: 40px; font-size: 18px; }
+    .f-pow b { font-size: 26px; } .hand-slots { font-size: 14px; }
+    .c-preview { font-size: 17px; } .c-name { font-size: 14px; } .c-icon { font-size: 20px; }
+    .c-alert { display: none; }
+    .feed { display: none; }
+  }
+  /* col tocco non esiste il passaggio del mouse: niente sollevamenti rimasti "appiccicati" dopo un tap */
+  @media (hover: none) {
+    .card:hover:not(:disabled), .skill:hover:not(:disabled), button.ghost:hover:not(:disabled), .service:hover:not(:disabled),
+    .forge-die:hover, .restart:hover, .shop-reroll:hover:not(:disabled), .chip.selectable:hover { transform: none; filter: none; }
+    .card:hover:not(:disabled) { box-shadow: 0 6px 0 var(--ink), inset 0 3px 0 rgba(255, 255, 255, 0.4), inset 0 -4px 0 rgba(0, 0, 0, 0.2); }
+    .door:hover:not(:disabled), .offer:hover:not(:disabled) { transform: none; box-shadow: 0 6px 0 var(--ink), inset 0 8px 0 var(--acc), inset 0 11px 0 rgba(255, 255, 255, 0.16); }
   }
   @media (prefers-reduced-motion: reduce) { .chip, .card { animation: none; transition: none; } }
 
@@ -1179,4 +1217,23 @@
   :global(main.game[data-coach="track"] .track),
   :global(main.game[data-coach="dock"] .dock) { outline: 4px solid var(--gold); outline-offset: 5px; border-radius: 16px; animation: coachglow 1.2s ease-in-out infinite; }
   @keyframes coachglow { 50% { outline-color: #fff1c4; box-shadow: 0 0 26px rgba(255, 208, 74, 0.7); } }
+
+  /* telefono: finestre (messe in fondo per vincere sulle regole desktop) */
+  @media (max-width: 760px) {
+    /* finestre: a tutta larghezza, offerte su due colonne */
+    .overlay { padding: 8px; }
+    .overlay-box { --pad-x: 12px; --pad-y: 14px; width: 100%; max-height: 96dvh; gap: 10px; }
+    .overlay-box h2 { font-size: 21px; padding: 10px 12px 8px; }
+    .overlay-box .offers { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .overlay-box .offer, .overlay-box .door { padding: 12px 8px 14px; }
+    .overlay-box .offer .tier { font-size: 11px; }
+    .offer .icon, .door .icon { font-size: 34px; margin-top: 6px; }
+    .offer .label, .door .label { font-size: 16px; }
+    .offer .hint, .door .hint { font-size: 13px; }
+    .doors { gap: 10px; }
+    .door { width: calc(50% - 5px); }
+    .door.bag { width: calc(50% - 5px); }
+    .menu-box { max-width: 100%; }
+    .logo { font-size: 42px; }
+  }
 </style>
