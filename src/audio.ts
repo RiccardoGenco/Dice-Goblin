@@ -114,6 +114,36 @@ class Sfx {
   reaction(): void { this.tone(988, 0.5, 'sine', 0.1); this.tone(1480, 0.45, 'sine', 0.07, undefined, 0.05); }
   charge(): void { this.tone(200, 0.35, 'sawtooth', 0.1, 700); }
   coin(): void { this.tone(1318, 0.07, 'square', 0.09); this.tone(1760, 0.2, 'square', 0.09, undefined, 0.07); }
+  /** Monete che cadono: più oro (log10 dell'incremento), più monete nella cascata */
+  loot(size = 1): void {
+    const n = Math.min(12, 3 + Math.round(size * 1.6));
+    for (let i = 0; i < n; i++) {
+      const t = i * 0.055 + Math.random() * 0.02;
+      const f = 1760 + Math.random() * 1500;
+      this.tone(f, 0.05, 'square', 0.06, undefined, t);
+      this.tone(f * 1.5, 0.16, 'triangle', 0.07, undefined, t + 0.03);
+      this.noise(0.03, 0.05, 6500, 'highpass', undefined, t);
+    }
+    this.tone(this.note(10), 0.35, 'sine', 0.06, undefined, n * 0.055);
+  }
+  /** Tic dei contatori che salgono (si alza con l'avanzare) */
+  tick(progress = 0): void { this.tone(900 + progress * 700, 0.025, 'square', 0.025); }
+  /** Vendita: monete che scendono di tono */
+  sell(): void { this.tone(1760, 0.07, 'square', 0.08); this.tone(1318, 0.09, 'square', 0.08, undefined, 0.07); this.tone(988, 0.18, 'triangle', 0.08, undefined, 0.15); this.noise(0.08, 0.08, 5200, 'highpass', undefined, 0.02); }
+  /** Oggetto equipaggiato: tintinnio metallico */
+  equip(rank = 0): void {
+    this.noise(0.06, 0.16, 3600, 'highpass');
+    this.tone(this.note(10 + rank), 0.2, 'triangle', 0.1);
+    this.tone(this.note(12 + rank), 0.3, 'sine', 0.09, undefined, 0.07);
+    if (rank >= 2) this.tone(this.note(15), 0.5, 'sine', 0.06, undefined, 0.14);
+  }
+  /** Reliquia o obiettivo: breve fanfara */
+  fanfare(): void {
+    [0, 2, 4, 7, 9].forEach((s, i) => this.tone(this.note(7 + s), 0.32, 'triangle', 0.13, undefined, i * 0.1));
+    this.tone(this.note(7), 0.9, 'sawtooth', 0.04, this.note(17), 0.0);
+  }
+  /** Porta scelta / evento */
+  door(): void { this.noise(0.25, 0.14, 500, 'lowpass', 1800); this.tone(150, 0.2, 'triangle', 0.1, 220); }
   denied(): void { this.tone(180, 0.15, 'square', 0.08, 120); }
   victory(): void { [0, 2, 4, 7].forEach((s, i) => this.tone(this.note(5 + s), 0.28, 'triangle', 0.14, undefined, i * 0.11)); }
   defeat(): void { [7, 5, 3, 0].forEach((s, i) => this.tone(this.note(2 + s), 0.4, 'sawtooth', 0.08, undefined, i * 0.2)); }

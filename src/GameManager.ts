@@ -48,6 +48,7 @@ import {
   equipVersion,
   uiPhase,
   goldView,
+  goldNum,
   runLabel,
   shopOffers,
   shopInfo,
@@ -367,7 +368,7 @@ export class GameManager {
     if (news.length) {
       const prev = get(rewardBanner);
       rewardBanner.set([prev, ...news].filter(Boolean).join('  ·  '));
-      sfx.victory();
+      sfx.fanfare();
     }
     this.publishMeta();
   }
@@ -488,6 +489,7 @@ export class GameManager {
       mult: fmt(s.multProduct),
       tier: multTier(s.multProduct),
       power: fmt(calc(new Decimal(1))),
+      powerNum: calc(new Decimal(1)).toNumber(),
       multCount: s.multCount
     });
 
@@ -516,6 +518,7 @@ export class GameManager {
     runLabel.set(this.run.label);
     runProgress.set({ act: this.run.state.act, encounter: this.run.state.encounter });
     goldView.set(formatBigNumber(this.run.state.gold));
+    goldNum.set(this.run.state.gold.toNumber());
   }
 
   public start(): Promise<void> {
@@ -679,6 +682,7 @@ export class GameManager {
   private onVictory(): void {
     const reward = this.run.goldReward();
     this.run.addGold(reward);
+    sfx.loot(this.run.isActBoss ? 5 : this.run.isChampion ? 4 : this.run.isElite ? 3 : 2);
     pushLog(`💰 Bottino: ${formatBigNumber(reward)} oro`);
     this.log.stats.goldEarned = this.log.stats.goldEarned.plus(reward);
     this.log.add('result', `Bottino ${formatBigNumber(reward)} oro (totale ${formatBigNumber(this.run.state.gold)})`);
@@ -776,7 +780,7 @@ export class GameManager {
 
   /** Scelta della porta: l'altra si chiude. */
   public chooseDoor(door: DoorKind): void {
-    sfx.click();
+    sfx.door();
     this.log.add('note', `Bivio${this.intermissionSpecial ? ' dorato' : ''}: sceglie ${DOOR_META[door].label}`);
     switch (door) {
       case 'shop': this.openShop(this.intermissionSpecial); break;
@@ -897,10 +901,10 @@ export class GameManager {
   private askReplace(incoming: EquipmentItem, info: string, canPay: (refund: Decimal) => boolean, then: (slot: number) => void): void {
     this.pendingReplace = then;
     replacePrompt.set({
-      incoming: { icon: incoming.icon, name: incoming.name, description: incoming.description },
+      incoming: { icon: incoming.icon, name: incoming.name, description: incoming.description, rarity: incoming.rarity, relic: !!incoming.relic },
       info,
       options: this.equipment.slots.map((s, slot) => s ? {
-        slot, icon: s.icon, name: s.name, description: s.description,
+        slot, icon: s.icon, name: s.name, description: s.description, rarity: s.rarity, relic: !!s.relic,
         value: s.relic ? 'Reliquia: va persa' : `+${formatBigNumber(this.valueOfItem(s))} oro`,
         blocked: canPay(this.valueOfItem(s)) ? null : 'Oro insufficiente'
       } : null).filter((x): x is NonNullable<typeof x> => x !== null)
@@ -954,7 +958,7 @@ export class GameManager {
     const it = this.rewardItems.find(i => i.id === id);
     if (!it) return;
     const value = this.valueOfItem(it).gt(0) ? this.valueOfItem(it) : this.shop.sellValue(it, this.run.shopLevel);
-    sfx.coin();
+    sfx.sell();
     this.run.addGold(value);
     this.log.stats.goldEarned = this.log.stats.goldEarned.plus(value);
     pushLog(`💰 Premio venduto: ${it.name} (+${formatBigNumber(value)} oro)`);
@@ -973,7 +977,7 @@ export class GameManager {
   }
 
   private finishReward(it: EquipmentItem): void {
-    sfx.coin();
+    if (it.relic) sfx.fanfare(); else sfx.equip(2);
     this.equipment.equip(it);
     this.syncEquipment();
     equipVersion.update(v => v + 1);
@@ -1008,6 +1012,8 @@ export class GameManager {
       hp: formatBigNumber(hp),
       maxHp: formatBigNumber(c.maxHp),
       hpRatio: Math.max(0, Math.min(1, hp.div(c.maxHp).toNumber())),
+      hpNum: hp.toNumber(),
+      maxNum: c.maxHp.toNumber(),
       shield: formatBigNumber(c.shield),
       poisonTurns: c.poison.turnsLeft
     };
@@ -1145,6 +1151,7 @@ export class GameManager {
     if (item.relic) { sfx.denied(); pushLog('✋ Le reliquie non si vendono'); return; }
     const value = this.shop.sellValue(item, this.run.shopLevel);
     this.equipment.unequip(slotIndex);
+    sfx.sell();
     this.run.addGold(value);
     this.syncEquipment();
     pushLog(`💰 Venduto: ${item.name} (+${formatBigNumber(value)})`);
@@ -1269,7 +1276,7 @@ export class GameManager {
     }
     if (offer.kind === 'item') {
       const item = findItem(offer.itemId ?? '');
-      if (item) this.equipment.equip(item);
+      if (item) { this.equipment.equip(item); sfx.equip(item.rarity === 'raro' ? 2 : item.rarity === 'non-comune' ? 1 : 0); }
       this.syncEquipment();
       equipVersion.update(v => v + 1);
     }

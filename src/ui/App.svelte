@@ -1,5 +1,7 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
+  import ItemBadge from './ItemBadge.svelte';
+  import Counter from './Counter.svelte';
   import Rich from './Rich.svelte';
   import { onMount } from 'svelte';
   import { GameManager } from '../GameManager';
@@ -13,7 +15,7 @@
     playerView, enemyView, intentView, battleState, rolledChips,
     overflowActive, settings, handSelection, handInfo, diceBusy, effectsView, battleResult, logLines, equipVersion,
     menuOpen, menuInfo, runSummary,
-    uiPhase, goldView, runLabel, shopOffers, shopInfo, shopSpecial, rewardBanner,
+    uiPhase, goldView, goldNum, runLabel, shopOffers, shopInfo, shopSpecial, rewardBanner,
     crossroadSpecial, doors, eventView, rewardChoices, rewardKind, bagOptions, bagPickerOpen, goalsView, replacePrompt, forgeSpecial, forgeOpsLeft, forgeVersion,
     chainView, skillPreview, skillHints, rollNonce, runProgress
   } from './stores';
@@ -236,16 +238,15 @@
       <div class="relics" aria-label="Equipaggiamento">
         {#each Array(MAX_EQUIPMENT_SLOTS) as _, i}
           {@const item = gm?.equipment.slots[i] ?? null}
-          <button
-            class="relic" class:filled={item}
-            title={item ? `${item.name} — ${item.description}` : 'Slot vuoto: compra oggetti dal mercante'}
-          >{#if item}<Icon e={item.icon} />{/if}</button>
+          <span class="relic" title={item ? `${item.name}${item.relic ? ' (reliquia)' : ''} — ${item.description}` : 'Slot vuoto: compra oggetti dal mercante'}>
+            <ItemBadge icon={item?.icon ?? ''} rarity={item?.rarity} relic={!!item?.relic} empty={!item} size={44} />
+          </span>
         {/each}
       </div>
     {/key}
 
     <div class="topright">
-      <span class="gold" title="Oro"><Icon e="💰" /> {$goldView}</span>
+      <span class="gold" title="Oro"><Icon e="💰" /> <Counter value={$goldNum} ticks floaty /></span>
       <button class="restart icon-btn" title={$settings.muted ? 'Attiva i suoni' : 'Silenzia'} aria-label="Suoni"
         on:click={() => settings.update(v => ({ ...v, muted: !v.muted }))}><Icon e={$settings.muted ? '🔇' : '🔊'} mono /></button>
       <button class="restart icon-btn" class:on={$settings.fast} title="Modalità veloce: animazioni più rapide" aria-label="Modalità veloce"
@@ -301,7 +302,7 @@
       {#if $chainView && $battleState === BattleState.WAIT_PLAYER_ACTION}
         <div class="formula" class:hot={$chainView.tier >= 2}>
           {#if $chainView.multCount > 0}<span class="f-mult">×{$chainView.mult}</span>{/if}
-          <span class="f-pow"><small>Potenza</small> {#key $chainView.power}<b class="num pop">{$chainView.power}</b>{/key}</span>
+          <span class="f-pow"><small>Potenza</small> {#key $chainView.power}<b class="num pop"><Counter value={$chainView.powerNum} duration={320} /></b>{/key}</span>
         </div>
       {/if}
       <div class="hand-slots" title="Tocca i dadi per scegliere quali giocare">
@@ -355,7 +356,7 @@
               title={offer.description}
               on:click={() => gm?.buyOffer(offer.id)}
             >
-              <span class="icon"><Icon e={offer.icon} /></span>
+              <span class="icon"><ItemBadge icon={offer.icon} rarity={offer.rarity} size={36} /></span>
               <span class="label"><Rich text={offer.label} />{#if offer.rarity} <small class="tier">{TIER_NAME[offer.rarity] ?? ''}</small>{/if}</span>
               <span class="hint"><Rich text={offer.description + (offer.note ? ` — ${offer.note}` : '')} /></span>
               <span class="cost" class:too-expensive={!offer.affordable}><Icon e="💰" /> {offer.cost}</span>
@@ -389,7 +390,7 @@
                 <button class="sellslot {it?.rarity ?? ''}" disabled={!it}
                   title={it ? `${it.name} — ${it.description}` : 'Slot vuoto'}
                   on:click={() => gm?.sellSlot(i)}>
-                  <span>{#if it}<Icon e={it.icon} />{/if}</span>
+                  <ItemBadge icon={it?.icon ?? ''} rarity={it?.rarity} relic={!!it?.relic} empty={!it} size={40} />
                   {#if val}<small><Icon e="💰" />{formatBigNumber(val)}</small>{/if}
                 </button>
               {/each}
@@ -453,8 +454,8 @@
         <div class="doors">
           {#each $rewardChoices as r}
             <div class="reward-col">
-              <button class="door golden" on:click={() => gm?.chooseReward(r.id)}>
-                <span class="icon"><Icon e={r.icon} /></span>
+              <button class="door golden reward-card {r.relic ? 'relic' : r.rarity}" on:click={() => gm?.chooseReward(r.id)}>
+                <span class="icon"><ItemBadge icon={r.icon} rarity={r.rarity} relic={r.relic} size={60} /></span>
                 <span class="label">{r.name}</span>
                 <span class="hint">{r.description}</span>
                 {#if r.note}<span class="hint warn">{r.note}</span>{/if}
@@ -608,7 +609,7 @@
       <div class="overlay-box replace-box">
         <h2>Slot pieni</h2>
         <div class="incoming">
-          <span class="icon"><Icon e={$replacePrompt.incoming.icon} /></span>
+          <span class="icon"><ItemBadge icon={$replacePrompt.incoming.icon} rarity={$replacePrompt.incoming.rarity} relic={$replacePrompt.incoming.relic} size={52} /></span>
           <div><b>{$replacePrompt.incoming.name}</b><div class="hint-line">{$replacePrompt.incoming.description}</div>
           <div class="hint-line">{$replacePrompt.info}</div></div>
         </div>
@@ -616,7 +617,7 @@
         <div class="offers">
           {#each $replacePrompt.options as o}
             <button class="offer replace-opt" disabled={!!o.blocked} on:click={() => gm?.confirmReplace(o.slot)}>
-              <span class="icon"><Icon e={o.icon} /></span>
+              <span class="icon"><ItemBadge icon={o.icon} rarity={o.rarity} relic={o.relic} size={36} /></span>
               <span class="label">{o.name}</span>
               <span class="hint"><Rich text={o.description} /></span>
               <span class="cost" class:too-expensive={!!o.blocked}>{o.blocked ?? o.value}</span>
@@ -765,11 +766,8 @@
   .pip.boss { border-color: var(--pink); }
   .pip.champ.done, .pip.boss.done { background: #8a6a2a; }
   .relics { display: flex; gap: 6px; }
-  .relic {
-    width: 38px; height: 38px; border-radius: 6px; font-size: 20px; cursor: pointer; padding: 0;
-    background: #0e0b1c; border: 1px dashed #4a4268; color: var(--muted);
-  }
-  .relic.filled { border-style: solid; border-color: #ffb84c; background: #2a2010; }
+  .relic { display: inline-flex; cursor: help; transition: transform 0.15s; }
+  .relic:hover { transform: translateY(-2px) scale(1.06); }
   .topright { display: flex; justify-content: flex-end; align-items: center; gap: 14px; }
   .gold { font-family: var(--num); color: var(--gold); font-weight: 700; font-size: 18px; }
   .restart {
@@ -798,8 +796,8 @@
   .hpnow { font-size: 14px; color: var(--muted); font-weight: 400; }
   .tier { margin-left: 8px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
   .offer.comune .tier { color: #9aa0a6; }
-  .offer.non-comune .tier { color: #7dff9b; }
-  .offer.raro .tier { color: #ffb84c; }
+  .offer.non-comune .tier { color: #4cc9f0; }
+  .offer.raro .tier { color: #c77dff; }
   .shop-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 10px 0; }
   .shop-actions .shop-reroll { white-space: nowrap; background: #241f3d; border: 2px solid #4a4268; color: var(--ink); border-radius: 8px; padding: 8px 14px; cursor: pointer; font-family: inherit; font-size: 14px; }
   .shop-actions .shop-reroll:disabled { opacity: 0.45; cursor: default; }
@@ -937,19 +935,19 @@
   .offer .hint { grid-column: 2; font-size: 11px; opacity: 0.75; }
   .offer .cost { grid-row: span 2; color: #ffd84c; font-size: 12px; }
   .offer:disabled { opacity: 0.4; cursor: default; }
-  .offer.non-comune, .sellslot.non-comune { border-color: #4cc9f0; }
-  .offer.raro, .sellslot.raro { border-color: #c77dff; box-shadow: 0 0 8px #c77dff66; }
+  .offer.non-comune { border-color: #4cc9f0; }
+  .offer.raro { border-color: #c77dff; box-shadow: 0 0 8px #c77dff66; }
   .offer.comune { border-color: #8a8a99; }
   .sellrow { display: flex; flex-direction: column; gap: 6px; align-items: center; margin: 8px 0; }
   .sellrow .slots { display: flex; gap: 6px; }
   .sellslot {
-    width: 54px; height: 54px; border-radius: 8px; background: #1b1626; border: 1px dashed #4a4160;
+    width: 64px; min-height: 66px; border-radius: 8px; background: transparent; border: 0;
     color: inherit; cursor: pointer; display: flex; flex-direction: column; align-items: center;
-    justify-content: center; font-size: 20px; padding: 0;
+    justify-content: center; gap: 3px; padding: 2px 0; transition: transform 0.12s;
   }
   .sellslot small { font-size: 10px; color: #ffd84c; }
-  .sellslot:not(:disabled) { border-style: solid; }
-  .sellslot:disabled { cursor: default; opacity: 0.6; }
+  .sellslot:not(:disabled):hover { transform: translateY(-2px); }
+  .sellslot:disabled { cursor: default; opacity: 0.55; }
   .cost.too-expensive { color: #ff5c5c; }
   .shop-box.royal { border-color: #ffd84c; box-shadow: 0 0 24px rgba(255, 216, 76, 0.25); }
 
@@ -967,6 +965,9 @@
   .door.elite { border-color: #ff6b5a; }
   .door .hint.warn { color: #ffb454; }
   .event-box { max-width: 560px; }
+  .reward-card.non-comune { border-color: #4cc9f0; background: #12303a; }
+  .reward-card.raro { border-color: #c77dff; background: #2c1a40; box-shadow: 0 0 16px #c77dff55; }
+  .reward-card.relic { border-color: #ffd34d; background: #3a2f12; box-shadow: 0 0 22px #ffd34d66; }
   .reward-col { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
   .sell-reward { font-size: 12px; padding: 6px 8px; }
   .replace-overlay { z-index: 60; }

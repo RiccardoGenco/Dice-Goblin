@@ -1,6 +1,7 @@
 <script lang="ts">
   import { get } from 'svelte/store';
   import Icon from './Icon.svelte';
+  import Counter from './Counter.svelte';
   import Rich from './Rich.svelte';
   import { onDestroy } from 'svelte';
   import Sprite from './Sprite.svelte';
@@ -74,6 +75,10 @@
   const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
   $: tier = $enemyInfo.tier;
+  /** particelle d'ambiente: posizioni fisse, così il palco non cambia a ogni render */
+  const PARTS = Array.from({ length: 22 }, (_, i) => ({
+    x: (i * 37 + 11) % 100, d: -((i * 1.7) % 9), t: 7 + ((i * 3) % 8), z: 0.6 + ((i * 5) % 7) / 10, dx: ((i * 13) % 40) - 20
+  }));
   /** altezza a schermo desiderata (px): i personaggi restano proporzionati
    *  qualunque sia la risoluzione nativa della sprite */
   // il disegno occupa ~65% del riquadro della sprite: i fattori lo compensano
@@ -93,14 +98,20 @@
 </script>
 
 <section
-  class="stage act{$actLevel}" class:shake={shaking} aria-label="Campo di battaglia"
+  class="stage act{$actLevel + 1} tier-{tier}" class:shake={shaking} aria-label="Campo di battaglia"
   bind:clientHeight={H} bind:clientWidth={W}
   style="--ui:{ui}; --hud-w:{hudW}px"
 >
   <div class="layer far"></div>
+  <div class="layer ceiling"></div>
   <div class="layer fog"></div>
   <div class="layer near"></div>
+  <div class="layer glow"></div>
   <div class="floor"></div>
+  <div class="particles" aria-hidden="true">
+    {#each PARTS as p}<i style="left:{p.x}%; --d:{p.d}s; --t:{p.t}s; --z:{p.z}; --dx:{p.dx}px"></i>{/each}
+  </div>
+  <div class="vignette"></div>
 
   <!-- ===== HUD: ancorati agli angoli alti del palco ===== -->
   <div class="hud player-hud">
@@ -112,7 +123,7 @@
       </span>
     </div>
     <div class="bar"><div class="fill pfill" style="width:{$playerView.hpRatio * 100}%"></div></div>
-    <div class="nums">{$playerView.hp} / {$playerView.maxHp}</div>
+    <div class="nums"><Counter value={$playerView.hpNum} duration={500} /> / {$playerView.maxHp}</div>
   </div>
 
   <div class="hud enemy-hud">
@@ -124,7 +135,7 @@
       </span>
     </div>
     <div class="bar"><div class="fill efill" style="width:{$enemyView.hpRatio * 100}%"></div></div>
-    <div class="nums">{$enemyView.hp} / {$enemyView.maxHp}</div>
+    <div class="nums"><Counter value={$enemyView.hpNum} duration={500} /> / {$enemyView.maxHp}</div>
   </div>
 
   <!-- ===== Schema del nemico: cosa farà ora e nei prossimi turni ===== -->
@@ -203,8 +214,88 @@
     border: 1px solid #33333f; background: #0d0d14; isolation: isolate;
     --sky-a: #1a1530; --sky-b: #2d1f45; --floor-a: #2a2236; --floor-b: #17121f;
   }
-  .stage.act1 { --sky-a: #11202a; --sky-b: #1f3a45; --floor-a: #1f3030; --floor-b: #101c1c; }
-  .stage.act2 { --sky-a: #2a1215; --sky-b: #4a2220; --floor-a: #3a2222; --floor-b: #1c1010; }
+  .stage.act1 { --sky-a: #11202a; --sky-b: #1f3a45; --floor-a: #1f3030; --floor-b: #101c1c; --pc: #d9f58a; }
+  .stage.act2 { --sky-a: #0b1620; --sky-b: #1b2740; --floor-a: #1d2a38; --floor-b: #0c121b; --pc: #b79cff; }
+  .stage.act3 { --sky-a: #2a0806; --sky-b: #8a2c10; --floor-a: #2b1410; --floor-b: #0f0605; --pc: #ffa24a; }
+
+  /* ---- Atto 2: cripta di cristalli. Niente luna: soffitto con stalattiti, cristalli luminosi, torce ---- */
+  .stage.act2 .far {
+    background:
+      radial-gradient(ellipse at 18% 62%, rgba(94, 224, 214, 0.22), transparent 38%),
+      radial-gradient(ellipse at 82% 54%, rgba(170, 120, 255, 0.24), transparent 40%),
+      radial-gradient(1.8px 1.8px at 12% 30%, #9ff, transparent), radial-gradient(1.8px 1.8px at 40% 18%, #c9b3ff, transparent),
+      radial-gradient(1.8px 1.8px at 62% 36%, #9ff, transparent), radial-gradient(1.8px 1.8px at 86% 22%, #c9b3ff, transparent),
+      linear-gradient(180deg, var(--sky-a), var(--sky-b) 75%);
+  }
+  .stage.act2 .ceiling {
+    top: 0; height: 26%;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='100' viewBox='0 0 160 100' preserveAspectRatio='none'%3E%3Cpath d='M0 0h160v12l-14 0-8 58-8-58-22 0-6 34-6-34-26 0-9 74-9-74-24 0-8 40-8-40-12 0z' fill='%2305080f'/%3E%3C/svg%3E") 0 0 / calc(160px * var(--ui)) 100% repeat-x;
+    opacity: 0.95;
+  }
+  .stage.act2 .near {
+    background:
+      linear-gradient(135deg, transparent 49%, rgba(64, 200, 205, 0.55) 50%) 0 100% / calc(60px * var(--ui)) calc(90px * var(--ui)) repeat-x,
+      linear-gradient(225deg, transparent 49%, rgba(150, 110, 255, 0.5) 50%) calc(34px * var(--ui)) 100% / calc(80px * var(--ui)) calc(120px * var(--ui)) repeat-x;
+    opacity: 0.55; animation: none;
+  }
+  .stage.act2 .glow {
+    inset: 0;
+    background:
+      radial-gradient(circle at 9% 50%, rgba(255, 170, 70, 0.55), transparent calc(110px * var(--ui))),
+      radial-gradient(circle at 91% 50%, rgba(255, 170, 70, 0.55), transparent calc(110px * var(--ui)));
+    animation: flicker 2.6s ease-in-out infinite;
+  }
+
+  /* ---- Atto 3: vulcano arcano. Eclissi, monti seghettati, crepe di lava ---- */
+  .stage.act3 .far {
+    background:
+      radial-gradient(circle at 50% 30%, #07040a 0 calc(40px * var(--ui)), rgba(255, 140, 50, 0.95) calc(42px * var(--ui)) calc(48px * var(--ui)), rgba(255, 90, 30, 0.28) calc(52px * var(--ui)) calc(120px * var(--ui)), transparent calc(190px * var(--ui))),
+      radial-gradient(ellipse at 50% 100%, rgba(255, 90, 20, 0.35), transparent 60%),
+      linear-gradient(180deg, var(--sky-a), var(--sky-b) 80%);
+  }
+  .stage.act3 .ceiling {
+    top: 0; height: 34%;
+    background: radial-gradient(ellipse at 20% 0%, rgba(20, 8, 8, 0.85), transparent 55%), radial-gradient(ellipse at 80% 0%, rgba(20, 8, 8, 0.85), transparent 55%);
+  }
+  .stage.act3 .near {
+    bottom: 33%; height: 34%;
+    background:
+      linear-gradient(160deg, transparent 52%, rgba(14, 6, 6, 0.95) 53%) 0 100% / calc(170px * var(--ui)) calc(150px * var(--ui)) repeat-x,
+      linear-gradient(200deg, transparent 52%, rgba(22, 8, 6, 0.95) 53%) calc(70px * var(--ui)) 100% / calc(190px * var(--ui)) calc(120px * var(--ui)) repeat-x;
+    opacity: 0.92; animation: none; filter: drop-shadow(0 -2px 6px rgba(255, 90, 20, 0.5));
+  }
+  .stage.act3 .glow {
+    inset: auto 0 0 0; height: 45%;
+    background: radial-gradient(ellipse at 50% 100%, rgba(255, 100, 30, 0.45), transparent 70%);
+    animation: flicker 3.4s ease-in-out infinite;
+  }
+  .stage.act3 .floor {
+    background:
+      repeating-linear-gradient(115deg, transparent 0 46px, rgba(255, 110, 30, 0.55) 46px 48px, transparent 48px 120px),
+      repeating-linear-gradient(65deg, transparent 0 80px, rgba(255, 150, 50, 0.4) 80px 82px, transparent 82px 190px),
+      linear-gradient(180deg, var(--floor-a), var(--floor-b));
+    border-top-color: rgba(255, 130, 50, 0.35);
+  }
+  .stage.act3 .fog { background: radial-gradient(ellipse at 30% 50%, rgba(255, 120, 60, 0.14), transparent 60%), radial-gradient(ellipse at 75% 60%, rgba(255, 90, 40, 0.12), transparent 55%); }
+
+  /* ---- particelle: lucciole (1), pulviscolo (2), braci che salgono (3) ---- */
+  .particles { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: hidden; }
+  .particles i {
+    position: absolute; bottom: 8%; width: calc(4px * var(--z)); height: calc(4px * var(--z)); border-radius: 50%;
+    background: var(--pc); box-shadow: 0 0 calc(8px * var(--z)) var(--pc); opacity: 0;
+    animation: float var(--t) ease-in-out var(--d) infinite;
+  }
+  .stage.act3 .particles i { animation-name: ember; bottom: 4%; }
+  .stage.act2 .particles i { animation-duration: calc(var(--t) * 1.6); }
+  @keyframes float { 0% { opacity: 0; transform: translate(0, 0); } 20% { opacity: 0.9; } 50% { transform: translate(var(--dx), -46px); } 80% { opacity: 0.8; } 100% { opacity: 0; transform: translate(calc(var(--dx) * -0.6), -110px); } }
+  @keyframes ember { 0% { opacity: 0; transform: translate(0, 0) scale(1); } 15% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--dx), -320px) scale(0.3); } }
+  @keyframes flicker { 0%, 100% { opacity: 0.85; } 40% { opacity: 1; } 55% { opacity: 0.7; } 75% { opacity: 0.95; } }
+
+  /* ---- vignetta: boss rosso e pulsante, campione dorato ---- */
+  .vignette { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+  .stage.tier-boss .vignette { background: radial-gradient(ellipse at 50% 55%, transparent 45%, rgba(120, 10, 30, 0.55) 100%); animation: bosspulse 2.4s ease-in-out infinite; }
+  .stage.tier-champion .vignette { background: radial-gradient(ellipse at 50% 55%, transparent 55%, rgba(140, 100, 10, 0.4) 100%); }
+  @keyframes bosspulse { 50% { opacity: 0.55; } }
 
   .layer, .floor { position: absolute; left: 0; right: 0; }
   /* il canvas 3D passato nello slot copre tutto il palco, senza intercettare i clic */

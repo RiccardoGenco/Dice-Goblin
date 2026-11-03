@@ -17,6 +17,9 @@ export interface CombatantView {
   hpRatio: number;   // 0-1 per la larghezza della barra
   shield: string;    // '0' = nessuno scudo
   poisonTurns: number;
+  /** valori numerici per i contatori animati */
+  hpNum: number;
+  maxNum: number;
 }
 
 export interface IntentView {
@@ -43,7 +46,9 @@ export const emptyCombatant = (): CombatantView => ({
   maxHp: '0',
   hpRatio: 0,
   shield: '0',
-  poisonTurns: 0
+  poisonTurns: 0,
+  hpNum: 0,
+  maxNum: 0
 });
 
 export const playerView = writable<CombatantView>(emptyCombatant());
@@ -94,6 +99,7 @@ export interface ShopOfferView {
  *  'shop'/'forge' = intermezzi; 'run-complete' = terzo boss. */
 export const uiPhase = writable<'battle' | 'crossroad' | 'shop' | 'forge' | 'event' | 'reward' | 'run-complete'>('battle');
 export const goldView = writable('0');
+export const goldNum = writable(0);
 /** Posizione nella run, per la barra di progresso (10 incontri per Atto) */
 export const runProgress = writable({ act: 1, encounter: 1 });
 export const runLabel = writable('Atto 1 — 1/10');
@@ -188,6 +194,7 @@ export interface ChainView {
   mult: string;      // prodotto dei moltiplicatori, es. "12"
   tier: number;      // 0-4, intensità scenica
   power: string;     // danno con skill ×1 (equip e overflow inclusi)
+  powerNum: number;
   multCount: number;
 }
 export const chainView = writable<ChainView | null>(null);
@@ -229,9 +236,9 @@ export const goalsView = writable<GoalView[]>([]);
 
 /** Slot pieni: scegli quale oggetto sacrificare per accettarne uno nuovo */
 export interface ReplacePrompt {
-  incoming: { icon: string; name: string; description: string };
+  incoming: { icon: string; name: string; description: string; rarity: string; relic: boolean };
   /** testo del prezzo o del premio */
   info: string;
-  options: { slot: number; icon: string; name: string; description: string; value: string; blocked: string | null }[];
+  options: { slot: number; icon: string; name: string; description: string; rarity: string; relic: boolean; value: string; blocked: string | null }[];
 }
 export const replacePrompt = writable<ReplacePrompt | null>(null);
