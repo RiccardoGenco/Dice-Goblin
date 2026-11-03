@@ -226,3 +226,12 @@ export const bagOptions = writable<BagView[]>([]);
 export const bagPickerOpen = writable(false);
 export interface GoalView { id: string; name: string; description: string; done: boolean; progress: string; ratio: number; rewardText: string }
 export const goalsView = writable<GoalView[]>([]);
+
+/** Slot pieni: scegli quale oggetto sacrificare per accettarne uno nuovo */
+export interface ReplacePrompt {
+  incoming: { icon: string; name: string; description: string };
+  /** testo del prezzo o del premio */
+  info: string;
+  options: { slot: number; icon: string; name: string; description: string; value: string; blocked: string | null }[];
+}
+export const replacePrompt = writable<ReplacePrompt | null>(null);

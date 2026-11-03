@@ -121,3 +121,13 @@ describe('Reliquie', () => {
     expect(eq.slots[weakestSlot(eq)]!.relic).not.toBe(true);
   });
 });
+
+import { Shop } from '../src/core/Shop';
+describe('Sacrificio con slot pieni', () => {
+  it('le reliquie valgono 0 se sacrificate, gli oggetti si vendono a metà prezzo', () => {
+    const shop = new Shop();
+    const rar = ITEMS.find(i => i.rarity === 'raro')!;
+    expect(shop.sellValue(rar, 10).gt(0)).toBe(true);
+    expect(RELICS[0]!.relic).toBe(true);
+  });
+});

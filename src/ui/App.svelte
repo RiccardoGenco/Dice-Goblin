@@ -14,7 +14,7 @@
     overflowActive, settings, handSelection, handInfo, diceBusy, effectsView, battleResult, logLines, equipVersion,
     menuOpen, menuInfo, runSummary,
     uiPhase, goldView, runLabel, shopOffers, shopInfo, shopSpecial, rewardBanner,
-    crossroadSpecial, doors, eventView, rewardChoices, rewardKind, bagOptions, bagPickerOpen, goalsView, forgeSpecial, forgeOpsLeft, forgeVersion,
+    crossroadSpecial, doors, eventView, rewardChoices, rewardKind, bagOptions, bagPickerOpen, goalsView, replacePrompt, forgeSpecial, forgeOpsLeft, forgeVersion,
     chainView, skillPreview, skillHints, rollNonce, runProgress
   } from './stores';
 
@@ -452,12 +452,17 @@
         <p class="hint-line">{$rewardKind === 'relic' ? 'Scegli una reliquia: le altre due svaniscono. Cambia il modo di giocare.' : 'Scegli un oggetto: l\'altro è perso.'}</p>
         <div class="doors">
           {#each $rewardChoices as r}
-            <button class="door golden" on:click={() => gm?.chooseReward(r.id)}>
-              <span class="icon"><Icon e={r.icon} /></span>
-              <span class="label">{r.name}</span>
-              <span class="hint">{r.description}</span>
-              {#if r.note}<span class="hint warn">{r.note}</span>{/if}
-            </button>
+            <div class="reward-col">
+              <button class="door golden" on:click={() => gm?.chooseReward(r.id)}>
+                <span class="icon"><Icon e={r.icon} /></span>
+                <span class="label">{r.name}</span>
+                <span class="hint">{r.description}</span>
+                {#if r.note}<span class="hint warn">{r.note}</span>{/if}
+              </button>
+              <button class="ghost sell-reward" on:click={() => gm?.sellReward(r.id)}>
+                Non lo voglio: vendi <Icon e="💰" /> {gm?.rewardSellValue(r.id)}
+              </button>
+            </div>
           {/each}
         </div>
       </div>
@@ -593,6 +598,32 @@
           <button class="ghost" disabled={!$menuInfo.hasLastLog} on:click={() => openLog('last')}><Icon e="🗂" /> Registro dell'ultima run</button>
         </div>
         <p class="hint-line">Il registro annota ogni turno: copialo e mandamelo dopo una partita.</p>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ===== Slot pieni: cosa sacrificare ===== -->
+  {#if $replacePrompt}
+    <div class="overlay replace-overlay">
+      <div class="overlay-box replace-box">
+        <h2>Slot pieni</h2>
+        <div class="incoming">
+          <span class="icon"><Icon e={$replacePrompt.incoming.icon} /></span>
+          <div><b>{$replacePrompt.incoming.name}</b><div class="hint-line">{$replacePrompt.incoming.description}</div>
+          <div class="hint-line">{$replacePrompt.info}</div></div>
+        </div>
+        <p class="hint-line">Scegli l'oggetto da sacrificare: viene venduto.</p>
+        <div class="offers">
+          {#each $replacePrompt.options as o}
+            <button class="offer replace-opt" disabled={!!o.blocked} on:click={() => gm?.confirmReplace(o.slot)}>
+              <span class="icon"><Icon e={o.icon} /></span>
+              <span class="label">{o.name}</span>
+              <span class="hint"><Rich text={o.description} /></span>
+              <span class="cost" class:too-expensive={!!o.blocked}>{o.blocked ?? o.value}</span>
+            </button>
+          {/each}
+        </div>
+        <button class="ghost" on:click={() => gm?.cancelReplace()}>Annulla</button>
       </div>
     </div>
   {/if}
@@ -936,6 +967,13 @@
   .door.elite { border-color: #ff6b5a; }
   .door .hint.warn { color: #ffb454; }
   .event-box { max-width: 560px; }
+  .reward-col { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+  .sell-reward { font-size: 12px; padding: 6px 8px; }
+  .replace-overlay { z-index: 60; }
+  .replace-box { max-width: 520px; max-height: 92vh; overflow-y: auto; }
+  .incoming { display: flex; gap: 12px; align-items: center; text-align: left; background: #3a2f12; border: 1px solid #ffd34d; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+  .incoming .icon { font-size: 28px; }
+  .replace-opt:disabled { opacity: 0.45; cursor: not-allowed; }
   .bag-box { max-width: 720px; max-height: 92vh; overflow-y: auto; }
   .bags { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 10px 0; }
   .door.bag { width: 150px; padding: 12px 10px; }

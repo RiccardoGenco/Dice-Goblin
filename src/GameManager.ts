@@ -59,6 +59,7 @@ import {
   rewardChoices,
   rewardKind,
   bagOptions,
+  replacePrompt,
   bagPickerOpen,
   goalsView,
   forgeSpecial,
@@ -878,28 +879,105 @@ export class GameManager {
       : pickEliteRewards(defaultRNG, this.equipment.ownedIds);
     if (this.rewardItems.length === 0) { this.afterReward(); return; }
     const full = this.equipment.freeSlots === 0;
-    const weak = full ? this.equipment.slots[weakestSlot(this.equipment)] : null;
     rewardChoices.set(this.rewardItems.map(it => ({
       id: it.id, icon: it.icon, name: it.name, description: it.description, rarity: it.rarity, relic: !!it.relic,
-      note: full && weak ? `Sostituisce ${weak.name}` : ''
+      note: full ? 'Slot pieni: sceglierai cosa sacrificare' : ''
     })));
     this.log.add('result', `${kind === 'relic' ? 'Reliquie del Boss' : 'Premio Élite'}: ${this.rewardItems.map(i => i.name).join(' / ')}`);
     this.autosave();
     uiPhase.set('reward');
   }
 
+  /** Valore di vendita: le reliquie non si vendono (sacrificate valgono 0) */
+  private valueOfItem(it: EquipmentItem): Decimal {
+    return it.relic ? new Decimal(0) : this.shop.sellValue(it, this.run.shopLevel);
+  }
+
+  /** Apre la scelta dell'oggetto da sacrificare */
+  private askReplace(incoming: EquipmentItem, info: string, canPay: (refund: Decimal) => boolean, then: (slot: number) => void): void {
+    this.pendingReplace = then;
+    replacePrompt.set({
+      incoming: { icon: incoming.icon, name: incoming.name, description: incoming.description },
+      info,
+      options: this.equipment.slots.map((s, slot) => s ? {
+        slot, icon: s.icon, name: s.name, description: s.description,
+        value: s.relic ? 'Reliquia: va persa' : `+${formatBigNumber(this.valueOfItem(s))} oro`,
+        blocked: canPay(this.valueOfItem(s)) ? null : 'Oro insufficiente'
+      } : null).filter((x): x is NonNullable<typeof x> => x !== null)
+    });
+  }
+
+  private pendingReplace: ((slot: number) => void) | null = null;
+
+  /** Dal prompt: sacrifica lo slot scelto e completa l'acquisto o il premio */
+  public confirmReplace(slot: number): void {
+    const fn = this.pendingReplace;
+    this.pendingReplace = null;
+    replacePrompt.set(null);
+    if (fn) fn(slot);
+  }
+
+  public cancelReplace(): void {
+    this.pendingReplace = null;
+    replacePrompt.set(null);
+  }
+
+  /** Toglie l'oggetto dallo slot e ne incassa il valore (0 per le reliquie) */
+  private sacrificeSlot(slot: number): void {
+    const old = this.equipment.slots[slot];
+    if (!old) return;
+    const value = this.valueOfItem(old);
+    this.equipment.unequip(slot);
+    if (value.gt(0)) {
+      this.run.addGold(value);
+      this.log.stats.goldEarned = this.log.stats.goldEarned.plus(value);
+    }
+    pushLog(`${old.icon} Sacrificato: ${old.name}${value.gt(0) ? ` (+${formatBigNumber(value)} oro)` : ''}`);
+    this.log.add('result', `Sacrificato: ${old.name}${value.gt(0) ? ` per ${formatBigNumber(value)}` : ''}`);
+  }
+
   public chooseReward(id: string): void {
     const it = this.rewardItems.find(i => i.id === id);
     if (!it) return;
-    sfx.coin();
     if (this.equipment.freeSlots === 0) {
-      const idx = weakestSlot(this.equipment);
-      const old = this.equipment.unequip(idx);
-      if (old) this.log.add('result', `Sostituito: ${old.name}`);
+      this.askReplace(it, 'Premio gratuito: scegli cosa lasciare', () => true, slot => {
+        this.sacrificeSlot(slot);
+        this.finishReward(it);
+      });
+      return;
     }
+    this.finishReward(it);
+  }
+
+  /** Rinuncia al premio e lo vende (gli altri vanno persi) */
+  public sellReward(id: string): void {
+    const it = this.rewardItems.find(i => i.id === id);
+    if (!it) return;
+    const value = this.valueOfItem(it).gt(0) ? this.valueOfItem(it) : this.shop.sellValue(it, this.run.shopLevel);
+    sfx.coin();
+    this.run.addGold(value);
+    this.log.stats.goldEarned = this.log.stats.goldEarned.plus(value);
+    pushLog(`💰 Premio venduto: ${it.name} (+${formatBigNumber(value)} oro)`);
+    this.log.add('result', `Premio venduto: ${it.name} per ${formatBigNumber(value)}`);
+    this.rewardItems = [];
+    rewardChoices.set([]);
+    this.refreshRunHeader();
+    this.autosave();
+    this.persistLog();
+    this.afterReward();
+  }
+
+  public rewardSellValue(id: string): string {
+    const it = this.rewardItems.find(i => i.id === id);
+    return it ? formatBigNumber(this.shop.sellValue(it, this.run.shopLevel)) : '0';
+  }
+
+  private finishReward(it: EquipmentItem): void {
+    sfx.coin();
     this.equipment.equip(it);
     this.syncEquipment();
     equipVersion.update(v => v + 1);
+    this.refreshRunHeader();
     pushLog(`${it.icon} ${this.rewardFrom === 'relic' ? 'Reliquia' : 'Premio Élite'}: ${it.name}`);
     this.log.add('result', `Scelto: ${it.name}`);
     this.rewardItems = [];
@@ -1109,10 +1187,10 @@ export class GameManager {
         label: o.label,
         description: o.description,
         cost: formatBigNumber(o.cost),
-        affordable: gold.gte(o.cost) && !(o.kind === 'item' && this.equipment.freeSlots === 0),
+        affordable: gold.gte(o.cost),
         ...(o.rarity ? { rarity: o.rarity } : {}),
         ...(o.kind === 'potion' || o.kind === 'elixir' ? { service: true } : {}),
-        ...(o.kind === 'item' && this.equipment.freeSlots === 0 ? { note: 'Slot pieni: vendi un oggetto' } : {})
+        ...(o.kind === 'item' && this.equipment.freeSlots === 0 ? { note: 'Slot pieni: sceglierai cosa sacrificare' } : {})
       }))
     );
     const rc = this.shop.rerollCost(this.run.shopLevel, this.shopRerolls);
@@ -1151,13 +1229,26 @@ export class GameManager {
   /** Acquisto dallo shop: addebita, applica, rigenera le viste.
    *  L'offerta comprata sparisce; le altre restano (ma i prezzi
    *  futuri saliranno del 3% per ogni acquisto di merce). */
-  public buyOffer(offerId: string): void {
+  public buyOffer(offerId: string, replaceSlot?: number): void {
     const offer = this.currentOffers.find(o => o.id === offerId);
     if (!offer) return;
     if (offer.kind === 'item' && this.equipment.freeSlots === 0) {
-      sfx.denied();
-      pushLog('✋ Slot pieni: vendi un oggetto prima di comprarne un altro');
-      return;
+      const newItem = findItem(offer.itemId ?? '');
+      if (!newItem) return;
+      if (replaceSlot === undefined) {
+        // slot pieni: il giocatore sceglie quale oggetto sacrificare (viene venduto)
+        this.askReplace(newItem, `Costo ${formatBigNumber(offer.cost)} oro`,
+          refund => this.run.state.gold.plus(refund).gte(offer.cost),
+          slot => this.buyOffer(offerId, slot));
+        return;
+      }
+      const old = this.equipment.slots[replaceSlot];
+      if (!old || !this.run.state.gold.plus(this.valueOfItem(old)).gte(offer.cost)) {
+        sfx.denied();
+        pushLog(`✋ Oro insufficiente per ${offer.label}`);
+        return;
+      }
+      this.sacrificeSlot(replaceSlot);
     }
     const isService = offer.kind === 'potion' || offer.kind === 'elixir';
     if (!this.run.spendGold(offer.cost, !isService)) {
