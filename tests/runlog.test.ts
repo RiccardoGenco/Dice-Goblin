@@ -68,15 +68,15 @@ describe('describeActiveItems', () => {
   it('elenca solo gli oggetti che scattano e distingue bonus piatti da moltiplicatori', () => {
     const ctx = buildCtx({ ...neutralCtx(), skill: SkillId.SGANCIO_BRUTALE, faces: [face(5), face(5)] });
     const out = describeActiveItems(items, ctx);
-    expect(out.some(t => t.startsWith('Lente Avida') && t.includes('×1.25'))).toBe(true);
-    expect(out.some(t => t.startsWith('Zanna Ricurva') && t.includes('+15'))).toBe(true);
+    expect(out.some(t => t.startsWith("Monocolo dell'Assassino") && t.includes('×1.25'))).toBe(true);
+    expect(out.some(t => t.startsWith('Zanna di Worg') && t.includes('+15'))).toBe(true);
     expect(out.some(t => t.startsWith('Talismano del Caos') && t.includes('×1.082'))).toBe(true);
-    expect(out.some(t => t.startsWith('Fungo Marcio'))).toBe(false); // solo con Bava
-    expect(out.some(t => t.startsWith('Dadi Truccati') && t.includes('regola'))).toBe(true);
+    expect(out.some(t => t.startsWith('Spora del Sottosuolo'))).toBe(false); // solo con Bava
+    expect(out.some(t => t.startsWith("Dadi dell'Imbroglione") && t.includes('regola'))).toBe(true);
   });
 
-  it('Fungo Marcio compare con Bava', () => {
+  it('Spora del Sottosuolo compare con Bava', () => {
     const ctx = buildCtx({ ...neutralCtx(), skill: SkillId.BAVA });
-    expect(describeActiveItems(items, ctx).some(t => t.startsWith('Fungo Marcio') && t.includes('×1.5'))).toBe(true);
+    expect(describeActiveItems(items, ctx).some(t => t.startsWith('Spora del Sottosuolo') && t.includes('×1.5'))).toBe(true);
   });
 });

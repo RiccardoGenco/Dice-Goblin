@@ -26,11 +26,11 @@ export interface BagDef {
 export const BAGS: BagDef[] = [
   { id: 'classica', name: 'Borsa Classica', icon: '🎒', description: 'Due facce di veleno, scudo e fuoco: si impara di tutto un po\'.',
     starter: [[0, 4, 'veleno'], [0, 5, 'fuoco'], [1, 4, 'scudo'], [1, 5, 'veleno'], [2, 4, 'fuoco'], [2, 5, 'scudo']] },
-  { id: 'veleno', name: 'Borsa del Veleno', icon: '☠', description: 'Quattro facce di veleno. Parti con la Fiala Velenosa.',
+  { id: 'veleno', name: 'Borsa del Veleno', icon: '☠', description: 'Quattro facce di veleno. Parti con la Fiala di Veleno Drow.',
     starter: [[0, 4, 'veleno'], [0, 5, 'veleno'], [1, 4, 'veleno'], [1, 5, 'scudo'], [2, 4, 'fuoco'], [2, 5, 'veleno']], item: 'fiala-velenosa' },
-  { id: 'scudo', name: 'Borsa dello Scudo', icon: '🛡️', description: 'Quattro facce di scudo. Parti con lo Scudo di Pentola.',
+  { id: 'scudo', name: 'Borsa dello Scudo', icon: '🛡️', description: 'Quattro facce di scudo. Parti con lo Targa del Soldato.',
     starter: [[0, 4, 'scudo'], [0, 5, 'veleno'], [1, 4, 'scudo'], [1, 5, 'scudo'], [2, 4, 'fuoco'], [2, 5, 'scudo']], item: 'scudo-pentola' },
-  { id: 'fuoco', name: 'Borsa del Fuoco', icon: '🔥', description: 'Quattro facce di fuoco. Parti con il Carbone Ardente.',
+  { id: 'fuoco', name: 'Borsa del Fuoco', icon: '🔥', description: 'Quattro facce di fuoco. Parti con il Tizzone Infernale.',
     starter: [[0, 4, 'fuoco'], [0, 5, 'fuoco'], [1, 4, 'scudo'], [1, 5, 'veleno'], [2, 4, 'fuoco'], [2, 5, 'fuoco']], item: 'carbone-ardente' }
 ];
 

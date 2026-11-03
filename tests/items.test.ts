@@ -37,19 +37,19 @@ describe('Catalogo oggetti', () => {
 });
 
 describe('Oggetti condizionali', () => {
-  it('Fungo Marcio vale solo per Bava', async () => {
+  it('Spora del Sottosuolo vale solo per Bava', async () => {
     const e = await engineWith(['fungo-marcio'], [uniform(10)]);
     const base = e.calcDamage(new Decimal(1)).toNumber();
     expect(e.calcDamage(new Decimal(1), SkillId.SGANCIO_BRUTALE).toNumber()).toBe(base);
     expect(e.calcDamage(new Decimal(1), SkillId.BAVA).toNumber()).toBeCloseTo(base * 1.5, 6);
   });
 
-  it('Unghia Sporca conta le facce incantate', async () => {
+  it('Artiglio Stregato conta le facce incantate', async () => {
     const e = await engineWith(['unghia-sporca'], [uniform(10, 'veleno'), uniform(10)]);
     expect(e.calcDamage(new Decimal(1)).toNumber()).toBe(20 + 4);
   });
 
-  it('Nervi Saldi premia le mani senza facce incantate, Ruota della Fortuna i dadi in panchina', async () => {
+  it('Sangue Freddo premia le mani senza facce incantate, Ruota del Fato i dadi in panchina', async () => {
     const plain = await engineWith(['nervi-saldi'], [uniform(10)]);
     const fancy = await engineWith(['nervi-saldi'], [uniform(10, 'veleno')]);
     expect(plain.calcDamage(new Decimal(1)).toNumber()).toBeCloseTo(15, 6);
@@ -62,7 +62,7 @@ describe('Oggetti condizionali', () => {
     expect(solo.calcDamage(new Decimal(1)).toNumber()).toBeCloseTo(10, 6);
   });
 
-  it('Predatore e Frantumascudi leggono lo stato del nemico', async () => {
+  it('Predatore e Ascia Spaccascudi leggono lo stato del nemico', async () => {
     const e = await engineWith(['predatore', 'frantumascudi'], [uniform(10)]);
     expect(e.calcDamage(new Decimal(1)).toNumber()).toBeCloseTo(10, 6);
     e.enemy.poison = { perTurn: new Decimal(1), turnsLeft: 2 };
@@ -71,12 +71,12 @@ describe('Oggetti condizionali', () => {
     expect(e.calcDamage(new Decimal(1)).toNumber()).toBeCloseTo(21, 6);
   });
 
-  it('Pietra del Catalizzatore scala con le reazioni', async () => {
+  it("Gemma dell'Arcanista scala con le reazioni", async () => {
     const e = await engineWith(['pietra-catalizzatore'], [uniform(4, 'veleno'), uniform(4, 'fuoco')]);
     expect(e.calcDamage(new Decimal(1)).toNumber()).toBeCloseTo(8 * 1.5, 6); // vapori
   });
 
-  it('Rabbia del Goblin scatta sotto metà HP', async () => {
+  it('Ira del Berserker scatta sotto metà HP', async () => {
     const e = await engineWith(['rabbia-goblin'], [uniform(10)]);
     expect(e.calcDamage(new Decimal(1)).toNumber()).toBeCloseTo(10, 6);
     e.player.hp = e.player.maxHp.times(0.4);
@@ -85,19 +85,19 @@ describe('Oggetti condizionali', () => {
 });
 
 describe('Oggetti che cambiano le regole', () => {
-  it('Dadi Truccati fa giocare un dado in più, Mano Larga ne fa pescare uno in più', async () => {
+  it("Dadi dell'Imbroglione fa giocare un dado in più, Guanto del Prestigiatore ne fa pescare uno in più", async () => {
     const e = await engineWith(['dadi-truccati'], [uniform(5)]);
     expect(e.playSlots).toBe(BALANCE.HAND_PLAY + 1);
     const m = await engineWith(['mano-larga'], Array.from({ length: 8 }, () => uniform(5)));
     expect(m.cards).toHaveLength(BALANCE.HAND_DRAW + 1);
   });
 
-  it('Pentolino Fumante: il fuoco fa ×3', async () => {
+  it('Turibolo Ardente: il fuoco fa ×3', async () => {
     const e = await engineWith(['pentolino-fumante'], [uniform(5, 'fuoco')]);
     expect(e.getEffects().fire.toNumber()).toBe(15);
   });
 
-  it('Calderone potenzia le reazioni, Pelle Spessa lo scudo', async () => {
+  it('Calderone della Strega potenzia le reazioni, Pelle di Troll lo scudo', async () => {
     const bag = [uniform(4, 'veleno'), uniform(6, 'scudo'), uniform(2, 'fuoco')];
     const plain = await engineWith([], bag);
     const boosted = await engineWith(['calderone', 'pelle-spessa'], bag);
@@ -106,7 +106,7 @@ describe('Oggetti che cambiano le regole', () => {
     expect(boosted.enemy.hp.toNumber()).toBeLessThan(plain.enemy.hp.toNumber());
   });
 
-  it('Scudo Chiodato aumenta il rimbalzo della Parata', async () => {
+  it('Scudo Spinato aumenta il rimbalzo della Parata', async () => {
     const run = async (ids: string[]) => {
       const e = await engineWith(ids, [uniform(10)]);
       e.currentIntent = { type: IntentType.ATTACK, value: new Decimal(100) };
@@ -117,13 +117,13 @@ describe('Oggetti che cambiano le regole', () => {
     expect(await run(['scudo-chiodato'])).toBeCloseTo((await run([])) * 1.5, 6);
   });
 
-  it('Cuore di Carica porta il bonus a ×2', async () => {
+  it('Cuore del Campione porta il bonus a ×2', async () => {
     const e = await engineWith(['cuore-carica'], [uniform(10)]);
     await e.resolvePlayerAction(SkillId.CARICA);
     expect(e.calcDamage(new Decimal(1)).toNumber()).toBeCloseTo(20 * 2, 6);
   });
 
-  it('Fiala Velenosa allunga il veleno di Bava', async () => {
+  it('Fiala di Veleno Drow allunga il veleno di Bava', async () => {
     const e = await engineWith(['fiala-velenosa'], [uniform(10)]);
     e.currentIntent = { type: IntentType.SHIELD, value: new Decimal(1) };
     await e.resolvePlayerAction(SkillId.BAVA);

@@ -93,12 +93,12 @@ export const FUSION_BOOST: Record<FamilyId, { text: string; part: Pick<Equipment
 };
 
 const FUSION_NAMES: Record<string, string> = {
-  'veleno+veleno': 'Alambicco Mortale', 'fuoco+fuoco': 'Fornace Viva', 'scudo+scudo': 'Muraglia Eterna',
-  'dadi+dadi': 'Cubo Sovrano', 'furia+furia': 'Pugno Ancestrale',
-  'veleno+fuoco': 'Vapore Infernale', 'veleno+scudo': 'Spine Velenose', 'dadi+veleno': 'Dado Avvelenato',
-  'furia+veleno': 'Morso Letale', 'fuoco+scudo': 'Scudo Rovente', 'dadi+fuoco': 'Dadi Ardenti',
-  'furia+fuoco': 'Ira Ardente', 'dadi+scudo': 'Baluardo Fortunato', 'furia+scudo': "Ariete d'Acciaio",
-  'dadi+furia': 'Colpo Fortunato'
+  'veleno+veleno': 'Alambicco Mortale', 'fuoco+fuoco': "Forgia dell'Inferno", 'scudo+scudo': 'Muraglia Eterna',
+  'dadi+dadi': 'Sfera del Destino', 'furia+furia': 'Pugno Ancestrale',
+  'veleno+fuoco': 'Vapore Infernale', 'veleno+scudo': 'Spine Velenose', 'dadi+veleno': 'Dado del Sicario',
+  'furia+veleno': 'Morso Letale', 'fuoco+scudo': 'Egida Ardente', 'dadi+fuoco': 'Dadi di Fiamma',
+  'furia+fuoco': 'Ira del Balor', 'dadi+scudo': 'Egida della Fortuna', 'furia+scudo': "Ariete d'Acciaio",
+  'dadi+furia': 'Colpo del Destino'
 };
 
 export function fusionName(a: FamilyId, b: FamilyId): string {
