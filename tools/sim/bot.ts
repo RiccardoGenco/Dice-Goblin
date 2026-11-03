@@ -127,10 +127,16 @@ async function fight(
   };
 }
 
+/** Esperimento: SIM_SCOLPIRE=1 fa scolpire dadi nuovi alla Forgia finché la borsa ha meno di 8 dadi */
+const SCOLPIRE = !!(globalThis as any).process?.env?.SIM_SCOLPIRE;
 function forgeVisit(forge: Forge, bag: GoblinDie[], run: RunManager, special: boolean): void {
   const ctx = { level: run.shopLevel, purchases: run.state.purchases, special };
   for (let op = 0; op < forge.opsPerVisit(special); op++) {
     let done = false;
+    if (SCOLPIRE && bag.length < 8) {
+      const q = forge.quote({ kind: 'scolpire' }, bag, ctx);
+      if (q.ok && run.spendGold(q.cost)) { forge.apply({ kind: 'scolpire' }, bag); continue; }
+    }
     for (let di = 0; di < bag.length && !done; di++) {
       const die = bag[di]!;
       if (die.faces.filter(f => f.type !== FaceType.NORMAL).length >= 3) continue;

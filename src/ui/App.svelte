@@ -65,6 +65,7 @@
   $: riforgQ = $forgeVersion >= 0 && selDie !== null && $forgeSpecial
     ? (gm?.quoteRiforgiatura(selDie) ?? null) : null;
 
+  $: scolpireQ = $forgeVersion >= 0 && $uiPhase === 'forge' ? (gm?.quoteScolpire() ?? null) : null;
   function onForgeDieClick(di: number): void {
     if (fusionMode && selDie !== null && di !== selDie) {
       // Fusione: selDie assorbe, di viene sacrificato
@@ -559,6 +560,14 @@
         {:else}
           <p class="hint-line">Seleziona un dado per vedere le sue facce</p>
         {/if}
+        <div class="crogiolo">
+          <button class="service" disabled={!scolpireQ?.ok || $forgeOpsLeft === 0}
+            title={scolpireQ?.reason ?? scolpireQ?.preview} on:click={() => gm?.applyForge({ kind: 'scolpire' })}>
+            <span><Icon e="🎲" /> Scolpisci un dado nuovo</span>
+            {#if scolpireQ}<span class="cost"><Icon e="💰" /> {scolpireQ.cost}</span>{/if}
+            {#if scolpireQ?.preview}<span class="hint">{scolpireQ.preview}</span>{/if}
+          </button>
+        </div>
         <div class="crogiolo">
           <h3><Icon e="⚗️" /> Crogiolo: fondi due oggetti</h3>
           {#if fuseItemsList.length >= 2}

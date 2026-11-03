@@ -1427,6 +1427,10 @@ export class GameManager {
     return this.toQuoteView({ kind: 'incanto', dieIndex, faceIndex, effect });
   }
 
+  public quoteScolpire(): ForgeQuoteView {
+    return this.toQuoteView({ kind: 'scolpire' });
+  }
+
   public quoteRiforgiatura(dieIndex: number): ForgeQuoteView {
     return this.toQuoteView({ kind: 'riforgiatura', dieIndex });
   }

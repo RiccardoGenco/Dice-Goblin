@@ -3,7 +3,7 @@ import Decimal from 'break_infinity.js';
 import { GoblinDie } from './GoblinDie';
 import { scaleShopCost } from './BattleEngine';
 import { PURCHASE_INFLATION } from './Shop';
-import { FaceEffect, FaceType, Rarity } from './types';
+import { FaceEffect, FaceType, Rarity, defaultRNG } from './types';
 import { EFFECT_META } from './effects';
 
 /* ============================================================
@@ -26,17 +26,19 @@ import { EFFECT_META } from './effects';
  * ============================================================ */
 
 export const MAX_SPECIAL_FACES = 3;
+export const MAX_BAG_DICE = 9;
 export const OPS_PER_VISIT = 2;
 export const OPS_PER_VISIT_SPECIAL = 3; // Gran Forgia
 
-export type ForgeServiceKind = 'tempra' | 'trasmutazione' | 'fusione' | 'riforgiatura' | 'incanto';
+export type ForgeServiceKind = 'tempra' | 'trasmutazione' | 'fusione' | 'riforgiatura' | 'incanto' | 'scolpire';
 
 const BASE_COST: Record<ForgeServiceKind, number> = {
   tempra: 30,
   trasmutazione: 40, // TUNING: 90 -> 40; dimezzata nella Gran Forgia
   fusione: 60,
   riforgiatura: 70, // esclusiva della Gran Forgia
-  incanto: 35
+  incanto: 35,
+  scolpire: 260 // un dado in più è la cosa più cara della Forgia: 4× una Fusione
 };
 
 export type ForgeOperation =
@@ -44,7 +46,8 @@ export type ForgeOperation =
   | { kind: 'trasmutazione'; dieIndex: number; faceIndex: number; target: FaceType }
   | { kind: 'fusione'; targetIndex: number; sacrificeIndex: number }
   | { kind: 'riforgiatura'; dieIndex: number }
-  | { kind: 'incanto'; dieIndex: number; faceIndex: number; effect: FaceEffect };
+  | { kind: 'incanto'; dieIndex: number; faceIndex: number; effect: FaceEffect }
+  | { kind: 'scolpire' };
 
 export interface ForgeContext {
   level: number;
@@ -110,7 +113,24 @@ export class Forge {
       case 'fusione': return this.quoteFusione(op, bag, ctx);
       case 'riforgiatura': return this.quoteRiforgiatura(op, bag, ctx);
       case 'incanto': return this.quoteIncanto(op, bag, ctx);
+      case 'scolpire': return this.quoteScolpire(bag, ctx);
     }
+  }
+
+  /** Forza media delle facce normali della borsa: il dado nuovo ci si adatta */
+  private bagScale(bag: GoblinDie[]): number {
+    let sum = 0, n = 0;
+    for (const d of bag) for (const f of d.faces) if (f.type === FaceType.NORMAL) { sum += Math.min(f.value.toNumber(), 1e9); n++; }
+    return n === 0 ? 1 : Math.max(1, sum / n / 3.5);
+  }
+
+  private quoteScolpire(bag: GoblinDie[], ctx: ForgeContext): ForgeQuote {
+    if (bag.length >= MAX_BAG_DICE) return this.reject('scolpire', ctx, `La borsa è piena: massimo ${MAX_BAG_DICE} dadi`);
+    return {
+      ok: true,
+      cost: this.cost('scolpire', ctx),
+      preview: `Un dado nuovo (${bag.length} → ${bag.length + 1}), proporzionato alla tua borsa, con una faccia incantata a caso`
+    };
   }
 
   private quoteIncanto(
@@ -273,6 +293,16 @@ export class Forge {
       }
       case 'incanto': {
         bag[op.dieIndex]!.faces[op.faceIndex]!.effect = op.effect;
+        break;
+      }
+      case 'scolpire': {
+        const k = this.bagScale(bag);
+        const die = new GoblinDie(Rarity.COMUNE);
+        for (const f of die.faces) f.value = new Decimal(Math.max(0.25, Math.round(f.value.toNumber() * k * 4) / 4));
+        const effects: FaceEffect[] = ['veleno', 'scudo', 'fuoco'];
+        const lucky = Math.floor(defaultRNG.next() * die.faces.length);
+        die.faces[lucky]!.effect = effects[Math.floor(defaultRNG.next() * effects.length)]!;
+        bag.push(die);
         break;
       }
       case 'riforgiatura': {
