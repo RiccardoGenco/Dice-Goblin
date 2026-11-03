@@ -6,10 +6,10 @@
 
 const KEY = 'goblin-settings-v1';
 
-export interface Settings { muted: boolean; fast: boolean; tutorialDone: boolean }
+export interface Settings { muted: boolean; fast: boolean; tutorialDone: boolean; crt: boolean }
 
 export function loadSettings(): Settings {
-  const d: Settings = { muted: false, fast: false, tutorialDone: false };
+  const d: Settings = { muted: false, fast: false, tutorialDone: false, crt: true };
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) return { ...d, ...JSON.parse(raw) };

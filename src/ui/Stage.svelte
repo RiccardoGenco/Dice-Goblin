@@ -212,8 +212,9 @@
 
 <style>
   .stage {
-    position: relative; height: 100%; min-height: 240px; overflow: hidden; border-radius: 10px;
-    border: 1px solid #33333f; background: #0d0d14; isolation: isolate;
+    position: relative; height: 100%; min-height: 240px; overflow: hidden; border-radius: 18px;
+    border: 4px solid var(--ink, #08040f); background: #0d0d14; isolation: isolate;
+    box-shadow: 0 6px 0 var(--ink, #08040f), 0 0 0 3px rgba(255, 255, 255, 0.07), inset 0 0 40px rgba(0, 0, 0, 0.45);
     --sky-a: #1a1530; --sky-b: #2d1f45; --floor-a: #2a2236; --floor-b: #17121f;
   }
   .stage.act1 { --sky-a: #11202a; --sky-b: #1f3a45; --floor-a: #1f3030; --floor-b: #101c1c; --pc: #d9f58a; }
@@ -373,54 +374,54 @@
   @keyframes guard { 0% { filter: drop-shadow(0 0 0 #5cd0ff); } 40% { filter: drop-shadow(0 0 12px #5cd0ff) brightness(1.3); } 100% { filter: none; } }
 
   /* HUD sul palco */
-  .hud { position: absolute; top: calc(10px * var(--ui)); width: var(--hud-w); z-index: 3; }
+  .hud { position: absolute; top: calc(10px * var(--ui)); width: var(--hud-w); z-index: 3; padding: 6px 10px 5px; border-radius: 12px; background: rgba(14, 8, 24, 0.82); border: 3px solid var(--ink, #08040f); box-shadow: 0 4px 0 var(--ink, #08040f), inset 0 2px 0 rgba(255, 255, 255, 0.14); box-sizing: border-box; }
   .player-hud { left: 14px; }
   .enemy-hud { right: 14px; }
   .who { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
-  .nm { font-weight: 700; font-size: calc(15px * var(--ui)); text-shadow: 0 1px 2px #000; }
+  .nm { font-weight: 800; font-size: max(17px, calc(18px * var(--ui))); letter-spacing: 0.5px; text-shadow: var(--num-stroke, 0 1px 2px #000); }
   .nm.champ { color: #ffd84c; }
   .nm.boss { color: #ff7a9c; }
-  .status { font-size: calc(12px * var(--ui)); display: flex; gap: 6px; }
-  .bar { height: calc(12px * var(--ui)); background: rgba(8,8,14,0.85); border: 1px solid #000; border-radius: 3px; overflow: hidden; margin-top: 3px; }
-  .fill { height: 100%; transition: width 0.45s ease; }
-  .efill { background: linear-gradient(90deg, #ff5c5c, #ff9b5c); }
-  .pfill { background: linear-gradient(90deg, #4cc94c, #7dff9b); }
-  .nums { font-family: ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace; font-size: calc(12px * var(--ui)); opacity: 0.85; text-align: right; text-shadow: 0 1px 2px #000; }
+  .status { font-size: max(14px, calc(14px * var(--ui))); display: flex; gap: 6px; }
+  .bar { height: max(16px, calc(18px * var(--ui))); background: #0a0612; border: 3px solid var(--ink, #000); border-radius: 999px; overflow: hidden; margin-top: 4px; box-shadow: inset 0 3px 0 rgba(0, 0, 0, 0.5); }
+  .fill { height: 100%; transition: width 0.45s ease; box-shadow: inset 0 4px 0 rgba(255, 255, 255, 0.35); border-radius: 999px; }
+  .efill { background: linear-gradient(180deg, #ff8a5c, #e0361f); }
+  .pfill { background: linear-gradient(180deg, #9be85f, #2f9a3a); }
+  .nums { font-family: ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace; font-size: max(14px, calc(14px * var(--ui))); font-weight: 700; text-align: right; text-shadow: var(--num-stroke, 0 1px 2px #000); }
 
   /* ---- Schema del nemico ---- */
   .track {
     position: absolute; top: calc(8px * var(--ui)); left: 50%; transform: translateX(-50%);
     z-index: 4; display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none;
   }
-  .track-title { font-size: calc(11px * var(--ui)); letter-spacing: 2px; text-transform: uppercase; color: #d9cffb; text-shadow: 0 1px 2px #000; }
-  .track-title span { color: #8f86b8; }
+  .track-title { font-size: max(14px, calc(13px * var(--ui))); font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--bone, #fff); text-shadow: var(--num-stroke, 0 1px 2px #000); }
+  .track-title span { color: var(--gold, #ffd04a); }
   .track-row { display: flex; align-items: stretch; gap: calc(4px * var(--ui)); }
   .tcard {
     --c: #ff5c8a; position: relative; display: grid; grid-template-rows: auto auto auto auto; justify-items: center; align-content: center;
-    background: linear-gradient(180deg, rgba(34,22,46,0.92), rgba(20,14,30,0.94)); border: 2px solid var(--c);
-    border-radius: 10px; padding: calc(4px * var(--ui)) calc(10px * var(--ui)); min-width: calc(74px * var(--ui)); gap: 1px;
-    box-shadow: 0 0 calc(10px * var(--ui)) color-mix(in srgb, var(--c) 45%, transparent), inset 0 0 10px rgba(0,0,0,0.5);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--c) 28%, #2a1c40), #160e26 80%); border: 3px solid var(--ink, #000);
+    border-radius: 12px; padding: calc(5px * var(--ui)) calc(10px * var(--ui)) calc(6px * var(--ui)); min-width: calc(84px * var(--ui)); gap: 1px;
+    box-shadow: 0 4px 0 var(--ink, #000), inset 0 4px 0 var(--c), inset 0 0 0 2px rgba(255, 255, 255, 0.06);
   }
   .tcard.k-attack { --c: #ff5c6c; } .tcard.k-shield { --c: #6cc4ff; } .tcard.k-poison { --c: #8dff5c; } .tcard.k-buff { --c: #ffd84c; }
-  .tcard .tag { font-size: calc(9px * var(--ui)); letter-spacing: 1.5px; text-transform: uppercase; color: var(--c); }
+  .tcard .tag { padding-top: calc(5px * var(--ui)); font-weight: 700; font-size: max(12px, calc(11px * var(--ui))); letter-spacing: 1.5px; text-transform: uppercase; color: var(--c); }
   .tcard .ti { font-size: calc(22px * var(--ui)); line-height: 1.1; }
-  .tcard .tl { font-size: calc(11px * var(--ui)); color: #eee9ff; white-space: nowrap; }
-  .tcard .tv { font-size: calc(15px * var(--ui)); color: #fff; text-shadow: 0 0 8px var(--c); }
-  .tcard .tip { font-size: calc(10px * var(--ui)); color: #ffe9a8; white-space: nowrap; }
+  .tcard .tl { font-size: max(14px, calc(13px * var(--ui))); font-weight: 700; color: var(--bone, #fff); white-space: nowrap; }
+  .tcard .tv { font-family: var(--font-num, monospace); font-size: calc(20px * var(--ui)); font-weight: 800; color: #fff; text-shadow: var(--num-stroke, 0 1px 2px #000); }
+  .tcard .tip { font-size: max(13px, calc(12px * var(--ui))); font-weight: 700; color: #ffe9a8; white-space: nowrap; }
   .tcard.now { min-width: calc(128px * var(--ui)); transform: scale(1.06); animation: nowpulse 1.6s ease-in-out infinite, tin 0.35s cubic-bezier(.2,1.4,.4,1) both; }
-  .tcard.now .ti { font-size: calc(30px * var(--ui)); } .tcard.now .tv { font-size: calc(22px * var(--ui)); }
+  .tcard.now .ti { font-size: calc(30px * var(--ui)); } .tcard.now .tv { font-size: calc(28px * var(--ui)); }
   .tcard.next { opacity: 0.88; animation: tin 0.35s ease-out both; }
   .tcard.n1 { opacity: 0.72; } .tcard.n2 { opacity: 0.55; }
   .chev { align-self: center; color: #8f86b8; font-size: calc(20px * var(--ui)); }
   .chev.loop { font-size: calc(15px * var(--ui)); opacity: 0.55; }
-  .rule { font-size: calc(11px * var(--ui)); max-width: 360px; text-align: center; color: #ffb3c6; text-shadow: 0 1px 2px #000; }
+  .rule { font-size: max(14px, calc(13px * var(--ui))); font-weight: 700; max-width: 420px; text-align: center; color: #ffc2d0; padding: 1px 12px; border-radius: 999px; background: rgba(14, 8, 24, 0.8); border: 2px solid var(--ink, #000); }
   @keyframes nowpulse { 50% { box-shadow: 0 0 calc(20px * var(--ui)) color-mix(in srgb, var(--c) 80%, transparent), inset 0 0 10px rgba(0,0,0,0.5); } }
   @keyframes tin { from { transform: translateY(-8px) scale(0.9); opacity: 0; } }
 
   /* numeri di danno */
   .floater {
-    position: absolute; bottom: 52%; z-index: 5; font-weight: 700; font-size: 30px;
-    text-shadow: 0 2px 0 #000, 0 0 10px rgba(0,0,0,0.8); pointer-events: none;
+    position: absolute; bottom: 52%; z-index: 5; font-weight: 800; font-size: 36px; font-family: var(--font-num, monospace);
+    text-shadow: var(--num-stroke, 0 2px 0 #000), 0 3px 0 var(--ink, #000); pointer-events: none;
     animation: floatup 1.4s ease-out forwards;
   }
   .floater.enemy { right: calc(7% + 50px); bottom: 66%; }
@@ -490,6 +491,21 @@
   @media (max-width: 640px) {
     .hud { width: var(--hud-w); }
     .player-slot { left: 2%; } .enemy-slot { right: 2%; }
+  }
+  /* telefono: le plance dei due combattenti stanno in alto, il telegrafo scende sotto di loro */
+  @media (max-width: 760px) {
+    .hud { padding: 4px 8px; }
+    .nm { font-size: 15px; }
+    .nums { font-size: 13px; }
+    .track { top: 84px; }
+    .track-title { font-size: 13px; }
+    .tcard { min-width: 66px; padding: 4px 6px; }
+    .tcard.now { min-width: 104px; transform: none; }
+    .tcard.n1, .tcard.n2, .chev.loop { display: none; }
+    .tcard .tl { font-size: 13px; }
+    .tcard .tv { font-size: 18px; } .tcard.now .tv { font-size: 22px; }
+    .tcard .tip { white-space: normal; text-align: center; max-width: 100px; }
+    .rule { font-size: 13px; max-width: 280px; }
   }
   @media (prefers-reduced-motion: reduce) {
     .near, .fog, .tcard, .shake, .ovf-tag, .burst.overflow .b-main { animation: none; }

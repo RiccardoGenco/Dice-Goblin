@@ -1,0 +1,87 @@
+/* ============================================================
+ * Tema: la Caverna del Goblin
+ *
+ * Un solo vocabolario grafico per tutto il gioco:
+ *  - viola notte e verde palude per gli sfondi, rosso brace e oro per le azioni e i numeri
+ *  - contorni scuri e spessi, ombre dure (nessuna sfumatura morbida sui bordi)
+ *  - forme grosse e tattili che si sollevano al passaggio e si schiacciano al clic
+ *  - testi mai sotto i 14px, numeri grandi con il contorno
+ * Le schermate leggono questi valori: per cambiare l'aspetto si cambia qui.
+ * ============================================================ */
+
+:root {
+  /* roccia della caverna, dal fondo alla luce */
+  --c0: #0e0818; --c1: #181029; --c2: #241838; --c3: #34244f; --c4: #4b3573;
+  --ink: #08040f;               /* contorno di tutto */
+  --bone: #f7efd9;              /* testo */
+  --ash: #cfc4e6;               /* testo secondario (contrasto alto su --c2) */
+  --ash-d: #a79bc6;             /* testo terziario, solo per cose davvero minori */
+
+  /* colori d'azione */
+  --moss: #74d96a;  --moss-d: #2f7a3a;
+  --ember: #ff6a3d; --ember-d: #b8321c;
+  --gold: #ffd04a;  --gold-d: #b87a10;
+  --crystal: #5ae6cf;
+  --blood: #ff4d6d;
+
+  /* effetti di gioco */
+  --venom: #9be85f; --shield: #62aeff; --fire: #ff8d3e; --arcane: #c68cff;
+
+  /* rarità: gli stessi colori ovunque (oggetti, offerte, premi) */
+  --r-comune: #b9c0cc; --r-non-comune: #4cc9f0; --r-raro: #c77dff; --r-relic: #ffd34d;
+
+  --r-panel: 16px; --r-btn: 12px; --bw: 3px;
+  --font-ui: 'Pixelify Sans', ui-monospace, monospace;
+  --font-num: ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace;
+  /* il contorno dei numeri grandi, in quattro direzioni: leggibile su qualsiasi sfondo */
+  --num-stroke: 2px 0 var(--ink), -2px 0 var(--ink), 0 2px var(--ink), 0 -2px var(--ink), 2px 2px var(--ink), -2px -2px var(--ink), 2px -2px var(--ink), -2px 2px var(--ink);
+}
+
+html, body, #app { height: 100%; }
+body {
+  margin: 0; background: var(--c0); color: var(--bone);
+  font-family: var(--font-ui); font-size: 16px; line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* sfondo vivo: la caverna respira, cristalli e braci che si muovono piano */
+body::before {
+  content: ''; position: fixed; inset: -25%; z-index: -2; pointer-events: none; will-change: transform;
+  background:
+    radial-gradient(34% 30% at 22% 28%, rgba(90, 230, 207, 0.20), transparent 72%),
+    radial-gradient(40% 34% at 78% 30%, rgba(198, 140, 255, 0.24), transparent 72%),
+    radial-gradient(46% 38% at 55% 86%, rgba(255, 106, 61, 0.17), transparent 72%),
+    radial-gradient(28% 26% at 10% 82%, rgba(116, 217, 106, 0.15), transparent 72%),
+    conic-gradient(from 0deg at 50% 50%, #130b21, #1f1236, #130b21, #26143c, #130b21);
+  animation: cave-swirl 90s linear infinite;
+}
+/* grana di roccia: puntini fissi che spezzano le sfumature */
+body::after {
+  content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: 0.5;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1.5px);
+  background-size: 22px 22px;
+}
+@keyframes cave-swirl { to { transform: rotate(360deg); } }
+
+/* schermo da vecchio monitor: righe sottili, vignetta e un battito appena percettibile */
+.crt::after {
+  content: ''; position: fixed; inset: 0; z-index: 999; pointer-events: none;
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.14) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at 50% 50%, transparent 58%, rgba(0, 0, 0, 0.5) 100%);
+  animation: crt-flicker 7s steps(70) infinite;
+}
+@keyframes crt-flicker { 0%, 100% { opacity: 1; } 47% { opacity: 0.94; } 50% { opacity: 1; } 83% { opacity: 0.96; } }
+
+/* movimenti condivisi: gli oggetti "rimbalzano", non scivolano */
+@keyframes pop-in { 0% { transform: scale(0.55) rotate(-3deg); opacity: 0; } 60% { transform: scale(1.06) rotate(0.6deg); opacity: 1; } 100% { transform: none; opacity: 1; } }
+@keyframes rise-in { from { transform: translateY(14px) scale(0.92); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes glow-pulse { 50% { filter: brightness(1.18); } }
+
+@media (prefers-reduced-motion: reduce) {
+  body::before { animation: none; }
+  .crt::after { animation: none; }
+}
+
+:focus-visible { outline: 3px solid var(--crystal); outline-offset: 3px; }

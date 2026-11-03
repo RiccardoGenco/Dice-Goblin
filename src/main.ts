@@ -1,3 +1,4 @@
+import './ui/theme.css';
 import App from './ui/App.svelte';
 
 /* Entry point: monta la HUD Svelte (DOM Layer, GDD §6.2).
