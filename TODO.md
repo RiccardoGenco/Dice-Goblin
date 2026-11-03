@@ -1,4 +1,4 @@
-# Goblin Revenge — Checklist del lavoro rimanente
+# Dice Goblin — Checklist del lavoro rimanente
 
 Stato attuale: MVP giocabile (20 commit, 37 test verdi). Fatto: motore core, pipeline esponenziale, dadi 3D guidati, HUD Svelte, run 3 Atti con Campione/Boss ogni 5 incontri, Shop + Mercante Reale, salvataggio e sblocchi permanenti.
 

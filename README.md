@@ -1,4 +1,4 @@
-# Goblin Revenge — MVP
+# Dice Goblin — MVP
 
 Dice Bag Builder roguelike incrementale con scaling esponenziale ispirato alla filosofia dei moltiplicatori di *Balatro*.
 
@@ -11,7 +11,7 @@ Il gioco è pubblicato su GitHub Pages: https://riccardogenco.github.io/Dice-Gob
 Il principio guida è il **disaccoppiamento totale logica/grafica**: `src/core/` è TypeScript puro (nessun import da Three.js, Cannon-es o Svelte) e decide ogni risultato *a monte*. Il layer grafico (Fisica Guidata, Approccio B) si limita a "recitare" i lanci già estratti.
 
 ```
-goblin-revenge/
+dice-goblin/
 ├── package.json            # vite, ts, break_infinity.js, three, cannon-es, vitest
 ├── tsconfig.json           # strict: true + path alias @core/@graphics/@ui
 ├── vite.config.ts

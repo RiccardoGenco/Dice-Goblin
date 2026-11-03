@@ -1,7 +1,7 @@
 import Decimal from 'break_infinity.js';
 
 /* ============================================================
- * TIPI CORE — Goblin Revenge
+ * TIPI CORE — Dice Goblin
  * Architettura dati disaccoppiata: questo modulo NON importa
  * nulla da graphics/ o ui/. È TypeScript puro + break_infinity.
  * ============================================================ */

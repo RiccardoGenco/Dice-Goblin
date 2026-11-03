@@ -1,4 +1,4 @@
-# Goblin Revenge — Quickstart
+# Dice Goblin — Quickstart
 
 ## Installazione e avvio
 

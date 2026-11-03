@@ -121,7 +121,7 @@
     setTimeout(() => { copied = false; }, 1800);
   }
   async function downloadLog(text: string): Promise<void> {
-    const filename = `goblin-revenge-registro-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.txt`;
+    const filename = `dice-goblin-registro-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.txt`;
     // nella pagina pubblicata il download passa dal visualizzatore (capability `downloads`)
     const c = (window as unknown as { claude?: { use?: (n: string) => Promise<{ save: (r: { filename: string; data: string }) => Promise<unknown> } | null> } }).claude;
     if (c?.use) {
@@ -643,7 +643,7 @@
   {#if $menuOpen}
     <div class="overlay menu">
       <div class="overlay-box menu-box">
-        <h1 class="logo">GOBLIN<br />REVENGE</h1>
+        <h1 class="logo">DICE<br />GOBLIN</h1>
         <p class="hint-line">Un goblin, una borsa di dadi e una vendetta esponenziale.</p>
         <div class="menu-btns">
           {#if $menuInfo.hasSave || $menuInfo.inProgress}

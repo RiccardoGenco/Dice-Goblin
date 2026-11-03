@@ -1,6 +1,6 @@
 # Specifica di Bilanciamento: Economia, Curve e Pozioni
 
-Questo documento raccoglie la fase di riflessione sul bilanciamento di *Goblin Revenge*: il metodo usato (simulazione Monte Carlo con il motore reale), i problemi trovati nella curva originale, le decisioni prese con i numeri finali, e il design delle pozioni di cura.
+Questo documento raccoglie la fase di riflessione sul bilanciamento di *Dice Goblin*: il metodo usato (simulazione Monte Carlo con il motore reale), i problemi trovati nella curva originale, le decisioni prese con i numeri finali, e il design delle pozioni di cura.
 
 ---
 

@@ -1,6 +1,6 @@
 # Specifica di Design: Flusso di Gioco Completo (Game Flow)
 
-Questo documento definisce **tutte le fasi del gioco** di *Goblin Revenge* e i passaggi di ciascuna, dalla schermata di avvio alla fine della run. Introduce la macchina a stati di alto livello (`GameFlowState`) che orchestra le fasi e **delega** il combattimento alla macchina a stati già esistente del `BattleEngine` (GDD §5): due FSM separate, una per il *macro-loop* (run) e una per il *micro-loop* (turno).
+Questo documento definisce **tutte le fasi del gioco** di *Dice Goblin* e i passaggi di ciascuna, dalla schermata di avvio alla fine della run. Introduce la macchina a stati di alto livello (`GameFlowState`) che orchestra le fasi e **delega** il combattimento alla macchina a stati già esistente del `BattleEngine` (GDD §5): due FSM separate, una per il *macro-loop* (run) e una per il *micro-loop* (turno).
 
 ---
 

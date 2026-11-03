@@ -118,7 +118,7 @@ export class RunLog {
   public toText(): string {
     const m = this.meta;
     const head = [
-      `REGISTRO RUN ${m.id} — Goblin Revenge`,
+      `REGISTRO RUN ${m.id} — Dice Goblin`,
       `Inizio: ${m.startedAt}${m.endedAt ? `  Fine: ${m.endedAt}` : ''}`,
       `Esito: ${m.outcome}${m.endLabel ? ` (${m.endLabel})` : ''}${m.killedBy ? ` — ucciso da ${m.killedBy}` : ''}`,
       `Taratura: ${Object.entries(m.tuning).map(([k, v]) => `${k}=${v}`).join(' ')}`,

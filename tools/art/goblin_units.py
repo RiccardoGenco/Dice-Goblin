@@ -1,4 +1,4 @@
-"""Sprite originali per Goblin Revenge: Bardo e Ladro (stesso motore rig di Arcana Siege)"""
+"""Sprite originali per Dice Goblin: Bardo e Ladro (stesso motore rig di Arcana Siege)"""
 import math, os, sys
 from PIL import Image
 sys.path.insert(0, os.path.dirname(__file__))

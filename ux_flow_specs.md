@@ -1,6 +1,6 @@
 # Specifica UX: L'Esperienza Utente Passo per Passo
 
-Questo documento definisce **l'esperienza dell'utente** in *Goblin Revenge*, schermata per schermata e click per click. Complementa `game_flow_specs.md` (che definisce *gli stati*) descrivendo *cosa vede, cosa può fare e cosa prova* il giocatore in ogni momento, inclusi menu di pausa, setup iniziale della run e regole trasversali di interazione.
+Questo documento definisce **l'esperienza dell'utente** in *Dice Goblin*, schermata per schermata e click per click. Complementa `game_flow_specs.md` (che definisce *gli stati*) descrivendo *cosa vede, cosa può fare e cosa prova* il giocatore in ogni momento, inclusi menu di pausa, setup iniziale della run e regole trasversali di interazione.
 
 ---
 
@@ -18,7 +18,7 @@ Questo documento definisce **l'esperienza dell'utente** in *Goblin Revenge*, sch
 
 | Passo | Cosa vede l'utente | Durata target |
 | :--- | :--- | :--- |
-| 1.1 | Schermata nera con logo 👺 *Goblin Revenge* | immediata |
+| 1.1 | Schermata nera con logo 👺 *Dice Goblin* | immediata |
 | 1.2 | Barra di caricamento SOLO se il boot supera 500ms (asset 3D, texture) | < 2s |
 | 1.3 | Transizione al Menu Principale (fade 300ms) | — |
 
@@ -32,7 +32,7 @@ Il menu ha **tre stati** in base alla situazione del giocatore:
 
 ```
 ┌──────────────────────────────────┐
-│         👺 GOBLIN REVENGE        │
+│         👺 DICE GOBLIN        │
 │                                  │
 │   ▶️  CONTINUA   (Atto 2 — 4/10) │   ← solo se c'è una run salvata
 │   🔄  NUOVA RUN                  │
