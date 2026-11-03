@@ -18,6 +18,13 @@ function ctx(seed = 1): EventCtx {
 }
 
 describe('Bivio', () => {
+  it('sotto il 50% di vita il Riposo è sempre offerto', () => {
+    for (let seed = 1; seed < 80; seed++) {
+      expect(pickDoors(seededRNG(seed), false, 0.49)).toContain('rest');
+      expect(pickDoors(seededRNG(seed), false, 0.49)).not.toContain('elite');
+    }
+  });
+
   it('le due porte sono sempre diverse e una è economica', () => {
     const rng = seededRNG(5);
     for (let i = 0; i < 300; i++) {

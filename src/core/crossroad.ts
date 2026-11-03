@@ -29,6 +29,8 @@ export const DOOR_META: Record<DoorKind, { icon: string; label: string; hint: st
 };
 
 export const REST_HEAL = 0.4;
+/** Sotto questa frazione di HP il bivio offre sempre il Riposo */
+export const REST_GUARANTEE = 0.5;
 export { ELITE_HP_MULT, ELITE_STR_MULT, ELITE_GOLD_MULT };
 
 /** Due porte diverse. `nextIsBoss`: il prossimo incontro è Campione/Boss (niente Élite). */
@@ -37,6 +39,8 @@ export const ELITES_PER_ACT = 2;
 export function pickDoors(rng: RNG, nextIsBoss: boolean, hpRatio: number, elitesInAct = 0): [DoorKind, DoorKind] {
   const first: DoorKind = rng.next() < 0.5 ? 'shop' : 'forge';
   const other: DoorKind = first === 'shop' ? 'forge' : 'shop';
+  // Sotto il 50% di vita il Riposo c'è sempre: niente Élite o Forgia a vita dimezzata senza alternativa
+  if (hpRatio < REST_GUARANTEE) return rng.next() < 0.5 ? ['rest', first] : [first, 'rest'];
   const pool: [DoorKind, number][] = [[other, 2], ['event', 3]];
   if (hpRatio < 0.95) pool.push(['rest', hpRatio < 0.7 ? 3 : 1.5]);
   if (!nextIsBoss && elitesInAct < ELITES_PER_ACT) pool.push(['elite', 2.5]);

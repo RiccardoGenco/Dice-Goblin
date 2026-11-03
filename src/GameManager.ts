@@ -482,6 +482,18 @@ export class GameManager {
     } else if (intentType === IntentType.SHIELD || intentType === IntentType.BUFF) {
       hints[SkillId.PARATA] = { text: '⚠ Il nemico non attacca: scudo sprecato', kind: 'warn' };
     }
+    // Attacco nemico letale: dillo prima di scegliere. Un colpo che uccide il nemico lo ferma, quindi resta il suggerimento "letale"
+    const intent = this.engine.currentIntent;
+    const pl = this.engine.player;
+    if (intent?.type === IntentType.ATTACK && intent.value.gte(pl.hp.plus(pl.shield))) {
+      const saved = intent.value.lt(pl.hp.plus(pl.shield).plus(parata));
+      hints[SkillId.PARATA] = saved
+        ? { text: '🛡 Solo la Parata ti salva da questo attacco', kind: 'good' }
+        : { text: '☠ Neanche la Parata basta: questo attacco ti uccide', kind: 'warn' };
+      for (const id of [SkillId.SGANCIO_BRUTALE, SkillId.BAVA, SkillId.CARICA]) {
+        if (!hints[id]) hints[id] = { text: '☠ Questo attacco ti uccide: non restare scoperto', kind: 'warn' };
+      }
+    }
     skillHints.set(hints);
 
     const s = summarizeChain(faces);
