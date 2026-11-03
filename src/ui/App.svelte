@@ -27,10 +27,19 @@
   let selDie: number | null = null;
   let selFace: number | null = null;
   let fusionMode = false;
+  let fuseSel: number[] = [];
+  $: fuseItemsList = $forgeVersion >= 0 && $uiPhase === 'forge' ? (gm?.getFuseView() ?? []) : [];
+  $: fuseQ = $forgeVersion >= 0 && fuseSel.length === 2 && gm ? gm.quoteFuse(fuseSel[0]!, fuseSel[1]!) : null;
+  function toggleFuse(slot: number): void {
+    fuseSel = fuseSel.includes(slot) ? fuseSel.filter(s => s !== slot) : [...fuseSel, slot].slice(-2);
+  }
+  function doFuse(): void {
+    if (fuseSel.length === 2) { gm?.applyFuse(fuseSel[0]!, fuseSel[1]!); fuseSel = []; equipVersion.update(v => v + 1); }
+  }
   let lastPhase = '';
   $: if ($uiPhase !== lastPhase) {
     lastPhase = $uiPhase;
-    selDie = null; selFace = null; fusionMode = false;
+    selDie = null; selFace = null; fusionMode = false; fuseSel = [];
   }
   $: forgeBag = $forgeVersion >= 0 && $uiPhase === 'forge' ? (gm?.getForgeBagView() ?? []) : [];
   $: tempraQ = $forgeVersion >= 0 && selDie !== null && selFace !== null
@@ -236,6 +245,15 @@
 
     {#key $equipVersion}
       <div class="relics" aria-label="Equipaggiamento">
+        {#if gm && gm.getFamilyView().length}
+          <div class="fams">
+            {#each gm.getFamilyView() as f}
+              <span class="fam" style="--fc:{f.color}" class:set={f.count >= 2} title={f.name + '\n' + f.lines.join('\n')}>
+                <Icon e={f.icon} /> <b>{f.count}</b>
+              </span>
+            {/each}
+          </div>
+        {/if}
         {#each Array(MAX_EQUIPMENT_SLOTS) as _, i}
           {@const item = gm?.equipment.slots[i] ?? null}
           <span class="relic" title={item ? `${item.name}${item.relic ? ' (reliquia)' : ''} — ${item.description}` : 'Slot vuoto: compra oggetti dal mercante'}>
@@ -358,6 +376,11 @@
             >
               <span class="icon"><ItemBadge icon={offer.icon} rarity={offer.rarity} size={36} /></span>
               <span class="label"><Rich text={offer.label} />{#if offer.rarity} <small class="tier">{TIER_NAME[offer.rarity] ?? ''}</small>{/if}</span>
+              {#if offer.family}
+                <span class="fam-tag" style="--fc:{offer.family.color}" title="Famiglia {offer.family.name}: ne hai già {offer.family.owned}">
+                  <Icon e={offer.family.icon} /> {offer.family.name}{#if offer.family.owned > 0} · {offer.family.owned} → {offer.family.owned + 1}{/if}
+                </span>
+              {/if}
               <span class="hint"><Rich text={offer.description + (offer.note ? ` — ${offer.note}` : '')} /></span>
               <span class="cost" class:too-expensive={!offer.affordable}><Icon e="💰" /> {offer.cost}</span>
             </button>
@@ -536,6 +559,34 @@
         {:else}
           <p class="hint-line">Seleziona un dado per vedere le sue facce</p>
         {/if}
+        <div class="crogiolo">
+          <h3><Icon e="⚗️" /> Crogiolo: fondi due oggetti</h3>
+          {#if fuseItemsList.length >= 2}
+            <div class="fuse-items">
+              {#each fuseItemsList as it}
+                <button class="fuse-item {it.rarity}" class:selected={fuseSel.includes(it.slot)} disabled={it.relic || it.fusion}
+                  title={it.relic ? 'Le reliquie non si fondono' : it.fusion ? 'Già una fusione' : it.name}
+                  on:click={() => toggleFuse(it.slot)}>
+                  <ItemBadge icon={it.icon} rarity={it.rarity} size={34} />
+                  <small>{it.name}</small><small class="fams-line">{it.families}</small>
+                </button>
+              {/each}
+            </div>
+            {#if fuseQ}
+              <p class="fuse-preview">
+                {#if fuseQ.name}<b>{fuseQ.name}</b> — {fuseQ.description}{:else}{fuseQ.reason}{/if}
+              </p>
+              <button class="service" disabled={!fuseQ.ok || $forgeOpsLeft === 0}
+                title={fuseQ.reason} on:click={doFuse}>
+                <span><Icon e="⚗️" /> Fondi</span><span class="cost"><Icon e="💰" /> {fuseQ.cost}</span>
+              </button>
+            {:else}
+              <p class="hint-line">Scegli due oggetti: ne nasce uno solo, con gli effetti di entrambi e un bonus di famiglia. Libera uno slot.</p>
+            {/if}
+          {:else}
+            <p class="hint-line">Servono almeno due oggetti.</p>
+          {/if}
+        </div>
         <button class="skill" on:click={() => void gm?.leaveForge()}><Icon e="⚔" /> Prossimo incontro</button>
       </div>
     </div>
@@ -999,6 +1050,21 @@
   .door:hover { transform: translateY(-2px); }
 
   .forge-box { min-width: 460px; max-width: 560px; }
+  .fams { display: flex; gap: 6px; margin-bottom: 4px; justify-content: center; }
+  .fam { display: inline-flex; align-items: center; gap: 3px; padding: 1px 8px; border-radius: 10px; font-size: 0.78rem;
+    border: 1px solid color-mix(in srgb, var(--fc) 45%, transparent); background: color-mix(in srgb, var(--fc) 12%, transparent); cursor: help; }
+  .fam.set { border-color: var(--fc); box-shadow: 0 0 8px color-mix(in srgb, var(--fc) 60%, transparent); }
+  .fam-tag { display: inline-block; font-size: 0.72rem; padding: 1px 8px; border-radius: 10px; color: var(--fc);
+    border: 1px solid color-mix(in srgb, var(--fc) 50%, transparent); background: color-mix(in srgb, var(--fc) 10%, transparent); }
+  .crogiolo { margin-top: 14px; padding-top: 10px; border-top: 1px dashed rgba(255, 255, 255, 0.18); }
+  .crogiolo h3 { margin: 0 0 8px; font-size: 0.95rem; }
+  .fuse-items { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .fuse-item { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 8px; min-width: 92px; border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05); border: 2px solid transparent; color: inherit; cursor: pointer; }
+  .fuse-item.selected { border-color: #ffd84a; background: rgba(255, 216, 74, 0.12); }
+  .fuse-item:disabled { opacity: 0.4; cursor: not-allowed; }
+  .fuse-item small { font-size: 0.7rem; opacity: 0.85; }
+  .fuse-preview { margin: 8px 0; font-size: 0.82rem; max-width: 560px; margin-inline: auto; }
   .forge-dice { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
   .forge-die {
     display: flex; flex-direction: column; gap: 2px; padding: 8px 12px;

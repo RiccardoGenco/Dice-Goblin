@@ -6,7 +6,9 @@ import { formatBigNumber, formatFaceValue } from '@core/format';
 import { summarizeChain, multTier, magnitudeOf } from '@core/chain';
 import { SKILLS } from '@core/skills';
 import { EFFECT_META, REACTIONS, ReactionId } from '@core/effects';
-import { EquipmentManager, findItem, EquipmentItem, describeActiveItems } from '@core/equipment';
+import { EquipmentManager, findItem, EquipmentItem, describeActiveItems, canFuse, fuseItems } from '@core/equipment';
+import type { TurnEvent } from '@core/turnEvents';
+import { familiesOf, familyCounts, FAMILIES, FAMILY_ORDER, SET_BONUSES } from '@core/families';
 import {
   RunLog, faceLabel, saveCurrentLog, loadCurrentLog, saveLastLog, loadLastLog
 } from '@core/RunLog';
@@ -67,6 +69,8 @@ import {
   forgeOpsLeft,
   forgeVersion,
   rewardBanner,
+  turnEventView,
+  phaseBanner,
   pushLog,
   CombatantView,
   DieChip,
@@ -399,6 +403,10 @@ export class GameManager {
     this.enemyProfile = enemyProfileFor(this.run.state.act, this.run.state.encounter, this.run.isChampion, this.run.isActBoss, this.run.isElite);
     this.engine.enemyPattern = this.enemyProfile.pattern;
     this.engine.bossRules = this.enemyProfile.rules;
+    this.engine.phase2 = this.enemyProfile.phase2 ?? null;
+    this.engine.eventAct = this.run.state.act;
+    turnEventView.set(null);
+    phaseBanner.set(null);
     bossRuleText.set(this.enemyProfile.rules?.text ?? '');
     intentQueue.set([]);
     this.engine.player.hp = this.engine.player.maxHp.times(this.run.state.hpRatio);
@@ -570,7 +578,25 @@ export class GameManager {
       this.refreshCombatants();
     });
 
+    e.on('onPhase', p => {
+      const text = String(p.text);
+      this.log.add('enemy', `FASE 2 — ${text}`);
+      pushLog(`🔥 ${text}`);
+      bossRuleText.set([this.enemyProfile?.rules?.text, text].filter(Boolean).join(' · '));
+      phaseBanner.set(text);
+      sfx.fanfare();
+      setTimeout(() => { if (get(phaseBanner) === text) phaseBanner.set(null); }, 3200);
+    });
+
+    e.on('onTurnEvent', p => {
+      const ev = p.event as TurnEvent;
+      turnEventView.set({ icon: ev.icon, title: ev.title, text: ev.text, good: ev.good });
+      this.log.add('turn', `Imprevisto: ${ev.title} — ${ev.text}`);
+      pushLog(`${ev.icon} ${ev.title}: ${ev.text}`);
+    });
+
     e.on('onEnemyIntent', p => {
+      if (!this.engine.turnEvent) turnEventView.set(null);
       const intent = p.intent as EnemyIntent;
       const meta = INTENT_META[intent.type];
       this.trackPlayerHp();
@@ -1197,6 +1223,24 @@ export class GameManager {
     uiPhase.set('shop');
   }
 
+  /** Famiglia dell'oggetto in offerta e quanti ne hai già */
+  private familyView(o: { kind: string; itemId?: string }): { family?: { icon: string; name: string; color: string; owned: number } } {
+    const it = o.kind === 'item' ? findItem(o.itemId ?? '') : undefined;
+    const f = it ? familiesOf(it)[0] : undefined;
+    if (!f) return {};
+    const owned = this.equipment.items.reduce((n, x) => n + (familiesOf(x).includes(f) ? 1 : 0), 0);
+    return { family: { icon: FAMILIES[f].icon, name: FAMILIES[f].name, color: FAMILIES[f].color, owned } };
+  }
+
+  /** Riepilogo famiglie per la barra: quanti oggetti, quali bonus attivi */
+  public getFamilyView(): { icon: string; name: string; color: string; count: number; lines: string[] }[] {
+    const counts = familyCounts(this.equipment.items);
+    return FAMILY_ORDER.filter(f => counts[f] > 0).map(f => ({
+      icon: FAMILIES[f].icon, name: FAMILIES[f].name, color: FAMILIES[f].color, count: counts[f],
+      lines: SET_BONUSES.filter(b => b.family === f).map(b => `${counts[f] >= b.need ? '✔' : '○'} ${b.need} oggetti: ${b.text}`)
+    }));
+  }
+
   private publishOffers(): void {
     const gold = this.run.state.gold;
     shopOffers.set(
@@ -1208,6 +1252,7 @@ export class GameManager {
         cost: formatBigNumber(o.cost),
         affordable: gold.gte(o.cost),
         ...(o.rarity ? { rarity: o.rarity } : {}),
+        ...this.familyView(o),
         ...(o.kind === 'potion' || o.kind === 'elixir' ? { service: true } : {}),
         ...(o.kind === 'item' && this.equipment.freeSlots === 0 ? { note: 'Slot pieni: sceglierai cosa sacrificare' } : {})
       }))
@@ -1413,6 +1458,51 @@ export class GameManager {
     this.log.stats.forgeOps++;
     this.log.stats.goldSpent = this.log.stats.goldSpent.plus(q.cost);
     this.log.add('forge', `${q.preview ?? 'operazione'} per ${formatBigNumber(q.cost)} — oro rimasto ${formatBigNumber(this.run.state.gold)}`);
+    this.persistLog();
+  }
+
+  /* ---------------- Crogiolo: fusione di due oggetti ---------------- */
+
+  /** Gli oggetti che si possono fondere, con le famiglie di appartenenza */
+  public getFuseView(): { slot: number; icon: string; name: string; rarity: string; relic: boolean; fusion: boolean; families: string }[] {
+    return this.equipment.slots.map((s, slot) => s ? {
+      slot, icon: s.icon, name: s.name, rarity: s.rarity, relic: !!s.relic, fusion: !!s.fusion,
+      families: familiesOf(s).map(f => FAMILIES[f].icon).join('')
+    } : null).filter((x): x is NonNullable<typeof x> => x !== null);
+  }
+
+  public quoteFuse(slotA: number, slotB: number): { ok: boolean; cost: string; reason?: string; name?: string; description?: string } {
+    const a = this.equipment.slots[slotA], b = this.equipment.slots[slotB];
+    if (!a || !b) return { ok: false, cost: '0', reason: 'Scegli due oggetti' };
+    const bad = canFuse(a, b);
+    if (bad) return { ok: false, cost: '0', reason: bad };
+    const fused = fuseItems(a, b);
+    const cost = this.shop.itemCost(fused, this.run.shopLevel, this.run.state.purchases).times(0.4).floor();
+    const out = { ok: true, cost: formatBigNumber(cost), name: fused.name, description: fused.description };
+    return this.run.state.gold.gte(cost) ? out : { ...out, ok: false, reason: 'Oro insufficiente' };
+  }
+
+  public applyFuse(slotA: number, slotB: number): void {
+    if (this.opsLeft <= 0) { pushLog('✋ Operazioni esaurite per questa visita'); return; }
+    const a = this.equipment.slots[slotA], b = this.equipment.slots[slotB];
+    const q = this.quoteFuse(slotA, slotB);
+    if (!a || !b || !q.ok) { pushLog(`✋ ${q.reason ?? 'Fusione non valida'}`); return; }
+    const fused = fuseItems(a, b);
+    const cost = this.shop.itemCost(fused, this.run.shopLevel, this.run.state.purchases).times(0.4).floor();
+    if (!this.run.spendGold(cost)) { pushLog('✋ Oro insufficiente'); return; }
+    this.equipment.slots[Math.min(slotA, slotB)] = fused;
+    this.equipment.slots[Math.max(slotA, slotB)] = null;
+    this.syncEquipment();
+    this.opsLeft--;
+    forgeOpsLeft.set(this.opsLeft);
+    forgeVersion.update(v => v + 1);
+    this.refreshRunHeader();
+    this.autosave();
+    sfx.equip(3);
+    pushLog(`⚗️ Crogiolo: ${a.name} + ${b.name} = ${fused.name}`);
+    this.log.stats.forgeOps++;
+    this.log.stats.goldSpent = this.log.stats.goldSpent.plus(cost);
+    this.log.add('forge', `Fusione: ${a.name} + ${b.name} = ${fused.name} per ${formatBigNumber(cost)} — oro rimasto ${formatBigNumber(this.run.state.gold)}`);
     this.persistLog();
   }
 

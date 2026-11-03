@@ -118,11 +118,47 @@ export const BOSS_PROFILES: Record<(typeof BOSS_ORDER)[number], BossProfile> = {
   }
 };
 
+/** Fase 2: sotto metà HP il nemico cambia schema */
+export interface Phase2 {
+  pattern: EnemyPattern;
+  text: string;
+}
+
 export interface EnemyProfile {
   name: string;
   pattern: EnemyPattern;
   rules: BossRules | null;
+  phase2?: Phase2;
 }
+
+/** Fase 2 dei Campioni e degli Élite: lo scudo diventa attacco e i colpi pesano di più */
+export function enragedPhase(p: EnemyPattern): Phase2 {
+  const steps: IntentStep[] = p.steps.map(s => {
+    if (s.type === S) return { type: A, mult: 0.7, tag: 'Furia' };
+    if (s.type === A) return { ...s, mult: (s.mult ?? 1) * 1.25 };
+    return s;
+  });
+  return { pattern: { ...p, id: `${p.id}-furia`, tip: 'Fase 2: non si copre più e colpisce più forte.', steps }, text: 'Fase 2: infuriato! Non si copre più e colpisce più forte' };
+}
+
+/** Fase 2 dei Boss, una per ciascuno */
+export const BOSS_PHASE2: Record<(typeof BOSS_ORDER)[number], Phase2> = {
+  'Sir Baldovino il Molesto': {
+    text: 'Fase 2: Frenesia! Due colpi e poi la Molestia',
+    pattern: { id: 'baldovino-2', name: 'Sir Baldovino', tip: 'Frenesia: due colpi e una Molestia più dura, quasi nessuna tregua.',
+      steps: [{ type: A, mult: 1.1 }, { type: A, mult: 1.1 }, { type: A, mult: 1.9, tag: 'Molestia' }] }
+  },
+  'Madre Ildegonda': {
+    text: 'Fase 2: Peste! Veleno doppio',
+    pattern: { id: 'ildegonda-2', name: 'Madre Ildegonda', tip: 'Peste: due veleni di fila e poi il colpo. Lo scudo non serve.',
+      steps: [{ type: P, mult: 1.6 }, { type: P, mult: 1.6 }, { type: A, mult: 1.5 }] }
+  },
+  'Arcimago Zoltan il Verboso': {
+    text: 'Fase 2: Tempesta arcana! Scudo e colpi pesanti',
+    pattern: { id: 'zoltan-2', name: 'Arcimago Zoltan', tip: 'Tempesta: scudo enorme, poi due colpi pesanti uno dopo l\'altro.',
+      steps: [{ type: S, mult: 3, tag: 'Scudo arcano' }, { type: A, mult: 1.6 }, { type: A, mult: 1.6 }, { type: B }] }
+  }
+};
 
 /** Quale classe si incontra: stessa formula che sceglie la sprite */
 export function classIndexFor(act: number, encounter: number): number {
@@ -135,9 +171,10 @@ export function enemyProfileFor(
   if (isActBoss) {
     const name = BOSS_ORDER[(act - 1) % BOSS_ORDER.length]!;
     const p = BOSS_PROFILES[name];
-    return { name, pattern: p.pattern, rules: p.rules };
+    return { name, pattern: p.pattern, rules: p.rules, phase2: BOSS_PHASE2[name] };
   }
   const cls = CLASS_ORDER[classIndexFor(act, encounter)]!;
-  if (isElite) return { name: `Élite — ${cls}`, pattern: CLASS_PATTERNS[cls], rules: eliteRule(act, encounter) };
-  return { name: isChampion ? `Campione — ${cls}` : cls, pattern: CLASS_PATTERNS[cls], rules: null };
+  if (isElite) return { name: `Élite — ${cls}`, pattern: CLASS_PATTERNS[cls], rules: eliteRule(act, encounter), phase2: enragedPhase(CLASS_PATTERNS[cls]) };
+  if (isChampion) return { name: `Campione — ${cls}`, pattern: CLASS_PATTERNS[cls], rules: null, phase2: enragedPhase(CLASS_PATTERNS[cls]) };
+  return { name: cls, pattern: CLASS_PATTERNS[cls], rules: null };
 }

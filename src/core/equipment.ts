@@ -1,6 +1,8 @@
 import Decimal from 'break_infinity.js';
 import { DamageMiddleware, DamagePayload, DieFace, FaceType, MiddlewarePhase, SkillId } from './types';
 import { DamagePipeline } from './DamagePipeline';
+import { FAMILIES, FUSION_BOOST, familiesOf, fusionName, activeSetBonuses } from './families';
+import type { FamilyId } from './families';
 
 /* ============================================================
  * Equipment — 5 slot, oggetti con condizioni (design_evolution, Fase B)
@@ -93,6 +95,45 @@ export interface EquipmentItem {
   mods?: Partial<ItemMods>;
   /** Reliquia: solo dai Boss d'Atto, mai in vendita */
   relic?: boolean;
+  /** Fusione di due oggetti: porta con sé le parti e occupa uno slot solo */
+  fusion?: boolean;
+  parts?: Pick<EquipmentItem, 'phase' | 'apply' | 'mods' | 'name' | 'description'>[];
+  families?: FamilyId[];
+}
+
+/** Le parti che producono davvero effetti (una fusione ne ha più d'una) */
+export function itemParts(item: EquipmentItem): Pick<EquipmentItem, 'phase' | 'apply' | 'mods' | 'name' | 'description'>[] {
+  return item.parts ?? [item];
+}
+
+/* ---------------- Fusione di oggetti ---------------- */
+
+export const FUSION_PREFIX = 'fusion:';
+
+export function canFuse(a: EquipmentItem, b: EquipmentItem): string | null {
+  if (a.id === b.id) return 'Servono due oggetti diversi';
+  if (a.relic || b.relic) return 'Le reliquie non si fondono';
+  if (a.fusion || b.fusion) return 'Una fusione non si fonde di nuovo';
+  return null;
+}
+
+/** Due oggetti diventano uno: gli effetti di entrambi, più un bonus per ogni famiglia */
+export function fuseItems(a: EquipmentItem, b: EquipmentItem): EquipmentItem {
+  const fa = familiesOf(a)[0], fb = familiesOf(b)[0];
+  const fams = [fa, fb].filter((f): f is FamilyId => !!f);
+  const boosts = fams.map(f => FUSION_BOOST[f]);
+  const name = fams.length === 2 ? fusionName(fams[0]!, fams[1]!) : `${a.name} + ${b.name}`;
+  return {
+    id: `${FUSION_PREFIX}${a.id}+${b.id}`,
+    name,
+    icon: a.icon,
+    rarity: 'raro',
+    fusion: true,
+    families: fams,
+    description: `${a.name}: ${a.description}. ${b.name}: ${b.description}.` +
+      (boosts.length ? ` Bonus di fusione: ${fams.length === 2 && fams[0] === fams[1] ? `${boosts[0]!.text} (doppio)` : boosts.map(x => x.text).join(', ')}.` : ''),
+    parts: [a, b, ...boosts.map((x, i) => ({ ...x.part, name: name, description: boosts[i]!.text }))]
+  };
 }
 
 /* ---- scorciatoie per scrivere gli oggetti ---- */
@@ -219,6 +260,11 @@ export const RELICS: EquipmentItem[] = [
 ];
 
 export function findItem(id: string): EquipmentItem | undefined {
+  if (id.startsWith(FUSION_PREFIX)) {
+    const [x, y] = id.slice(FUSION_PREFIX.length).split('+');
+    const a = x ? findItem(x) : undefined, b = y ? findItem(y) : undefined;
+    return a && b ? fuseItems(a, b) : undefined;
+  }
   return ITEMS.find(i => i.id === id) ?? RELICS.find(i => i.id === id);
 }
 
@@ -240,8 +286,10 @@ export function describeActiveItems(items: readonly (EquipmentItem | null)[], ct
   const probe: DamagePayload = {
     baseStr: new Decimal(0), flatAdded: new Decimal(0), multiplier: new Decimal(1), finalDamage: new Decimal(100)
   };
-  for (const it of items) {
-    if (!it) continue;
+  const expanded: Pick<EquipmentItem, 'phase' | 'apply' | 'mods' | 'name' | 'description'>[] = [];
+  for (const it of items) if (it) expanded.push(...itemParts(it));
+  for (const b of activeSetBonuses(items)) expanded.push({ ...b.part, name: `${FAMILIES[b.family].name} ×${b.need}`, description: b.text });
+  for (const it of expanded) {
     if (it.apply) {
       const r = it.apply(probe, ctx);
       const parts: string[] = [];
@@ -286,10 +334,20 @@ export class EquipmentManager {
     return item;
   }
 
+  /** Parti attive: quelle degli oggetti (le fusioni ne hanno più d'una) e i bonus di set */
+  private allParts(): Pick<EquipmentItem, 'phase' | 'apply' | 'mods'>[] {
+    const items = this.slots.filter((s): s is EquipmentItem => s !== null);
+    return [...items.flatMap(itemParts), ...activeSetBonuses(items).map(b => b.part)];
+  }
+
+  /** Famiglie e quanti oggetti ne hai */
+  public get items(): EquipmentItem[] { return this.slots.filter((s): s is EquipmentItem => s !== null); }
+
   /** Somma dei mods di tutti gli oggetti equipaggiati */
   public mods(): ItemMods {
     const m = neutralMods();
-    for (const item of this.slots) {
+    const parts = this.allParts();
+    for (const item of parts) {
       if (!item?.mods) continue;
       const x = item.mods;
       m.extraPlay += x.extraPlay ?? 0;
@@ -308,7 +366,7 @@ export class EquipmentManager {
    *  del lancio (il motore); senza, gli oggetti vedono un contesto neutro. */
   public syncPipeline(pipeline: DamagePipeline, ctx: () => ItemCtx = neutralCtx): void {
     pipeline.clear();
-    for (const item of this.slots) {
+    for (const item of this.allParts()) {
       if (!item?.apply || item.phase === undefined) continue;
       const apply = item.apply;
       const mw: DamageMiddleware = pl => apply(pl, ctx());

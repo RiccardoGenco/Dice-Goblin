@@ -3,7 +3,8 @@ import Decimal from 'break_infinity.js';
 import { GoblinDie } from './GoblinDie';
 import { BALANCE, CombatantStats, FaceType, RNG, defaultRNG } from './types';
 import { DieBlueprint, createDieFromBlueprint } from './diceCatalog';
-import { EquipmentItem, ITEMS, ItemRarity } from './equipment';
+import { EquipmentItem, ITEMS, ItemRarity, findItem } from './equipment';
+import { familiesOf, familyCounts } from './families';
 import { RunManager } from './RunManager';
 
 /* ============================================================
@@ -118,15 +119,26 @@ export class Shop {
   private pickItems(
     count: number, owned: readonly string[], level: number, special: boolean, guaranteeRare: boolean
   ): EquipmentItem[] {
-    const pool = ITEMS.filter(i => !owned.includes(i.id));
-    const weights = tierWeights(level, special);
+    // Gli oggetti già fusi non tornano in vendita; le famiglie che hai già pesano di più
+    const ownedItems = owned.map(findItem).filter((i): i is EquipmentItem => !!i);
+    const taken = new Set<string>(owned);
+    for (const it of ownedItems) for (const p of it.fusion ? it.parts ?? [] : []) taken.add((p as EquipmentItem).id);
+    const have = familyCounts(ownedItems);
+    const pool = ITEMS.filter(i => !taken.has(i.id));
+    const tier = tierWeights(level, special);
+    const famBoost = (i: EquipmentItem): number => {
+      const f = familiesOf(i)[0];
+      return !f || have[f] === 0 ? 1 : have[f] === 1 ? 2 : 3;
+    };
+    const weights = { 'comune': tier['comune'], 'non-comune': tier['non-comune'], 'raro': tier['raro'] };
+    const wOf = (i: EquipmentItem): number => weights[i.rarity] * famBoost(i);
     const picked: EquipmentItem[] = [];
     const draw = (from: EquipmentItem[]): EquipmentItem => {
-      const total = from.reduce((a, i) => a + weights[i.rarity], 0);
+      const total = from.reduce((a, i) => a + wOf(i), 0);
       let r = this.rng.next() * total;
       let idx = 0;
       for (; idx < from.length - 1; idx++) {
-        r -= weights[from[idx]!.rarity];
+        r -= wOf(from[idx]!);
         if (r < 0) break;
       }
       return from[idx]!;

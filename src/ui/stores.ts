@@ -58,6 +58,10 @@ export const intentView = writable<IntentView | null>(null);
 export const intentQueue = writable<IntentView[]>([]);
 /** Regola speciale del boss, se c'è */
 export const bossRuleText = writable<string>('');
+/** Imprevisto del turno in corso (null = nessuno) */
+export const turnEventView = writable<{ icon: string; title: string; text: string; good: boolean } | null>(null);
+/** Annuncio di fase 2, mostrato per qualche secondo sul palco */
+export const phaseBanner = writable<string | null>(null);
 export const battleState = writable<BattleState>(BattleState.INIT_TURN);
 export const rolledChips = writable<DieChip[]>([]);
 export const overflowActive = writable(false);
@@ -89,6 +93,8 @@ export interface ShopOfferView {
   description: string;
   cost: string;
   affordable: boolean;
+  /** icona e colore della famiglia, se l'offerta è un oggetto */
+  family?: { icon: string; name: string; color: string; owned: number };
   rarity?: string;
   note?: string;
   /** true per Pozione/Elisir: vanno in una riga a parte */

@@ -35,15 +35,16 @@ describe('EquipmentManager — regola dei 5 slot (MVP §4)', () => {
     const eq = new EquipmentManager();
     const pipeline = new DamagePipeline();
 
-    // Anello (+8 PRE_ADD) e Idolo (×1.5 MULT): (10+8)*1.5 = 27
+    // Anello (+8 PRE_ADD) e Idolo (×1.5 MULT), entrambi Furia: bonus di set ×1.08
+    // (10+8)*1.5*1.08 = 29.16
     eq.equip(findItem('anello-bruto')!);
     eq.equip(findItem('idolo-goblin')!);
     eq.syncPipeline(pipeline);
     expect(
       pipeline.calculateTurnDamage(new Decimal(10), [], new Decimal(1)).toNumber()
-    ).toBeCloseTo(27, 6);
+    ).toBeCloseTo(29.16, 6);
 
-    // Rimuovo l'anello: 10*1.5 = 15
+    // Rimuovo l'anello: resta un solo oggetto Furia, niente set: 10*1.5 = 15
     eq.unequip(0);
     eq.syncPipeline(pipeline);
     expect(

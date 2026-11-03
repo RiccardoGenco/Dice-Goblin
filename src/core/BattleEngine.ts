@@ -1,6 +1,8 @@
 import Decimal from 'break_infinity.js';
 import { GoblinDie } from './GoblinDie';
 import type { EnemyPattern, BossRules, IntentStep } from './enemies';
+import { rollTurnEvent } from './turnEvents';
+import type { TurnEvent } from './turnEvents';
 import { DamagePipeline } from './DamagePipeline';
 import { SKILLS } from './skills';
 import { ItemCtx, ItemMods, buildCtx, neutralMods } from './equipment';
@@ -44,6 +46,8 @@ export type BattleEventName =
   | 'onCharge' // Carica: il lancio resta per il turno dopo
   | 'onReaction' // due effetti di facce diverse reagiscono (vapori, spore...)
   | 'onEnemyIntent'
+  | 'onPhase' // il nemico passa alla fase 2
+  | 'onTurnEvent' // imprevisto di turno
   | 'onEnemyAction'
   | 'onBattleEnded';
 
@@ -100,6 +104,13 @@ export class BattleEngine {
   public enemyPattern: EnemyPattern | null = null;
   /** Regole speciali del boss */
   public bossRules: BossRules | null = null;
+  /** Fase 2 del nemico (si attiva sotto metà HP) */
+  public phase2: { pattern: EnemyPattern; text: string } | null = null;
+  public phase = 1;
+  /** Imprevisti di turno: l'Atto in corso (0 = spenti) e quello attivo adesso */
+  public eventAct = 0;
+  public turnEvent: TurnEvent | null = null;
+  private turnNumber = 0;
   /** Passo dello schema del turno corrente */
   private patternIdx = 0;
   private patternTurn = 0;
@@ -124,7 +135,8 @@ export class BattleEngine {
   public get playSlots(): number { return Math.max(1, BALANCE.HAND_PLAY + this.mods.extraPlay); }
   /** Dadi pescati dalla borsa a inizio turno */
   public get drawCount(): number {
-    return Math.max(1, BALANCE.HAND_DRAW + this.mods.extraDraw - (this.bossRules?.handPenalty ?? 0));
+    const ev = this.turnEvent?.id === 'mano-ridotta' ? 1 : 0;
+    return Math.max(1, BALANCE.HAND_DRAW + this.mods.extraDraw - (this.bossRules?.handPenalty ?? 0) - ev);
   }
   /** Indici delle carte della mano (le radici) */
   public get cards(): number[] {
@@ -201,8 +213,30 @@ export class BattleEngine {
 
     if (await this.checkBattleEnd()) return;
 
+    // Fase 2: sotto metà HP il nemico cambia schema, e il giocatore lo vede subito
+    if (this.phase2 && this.phase === 1 && this.enemy.hp.lte(this.enemy.maxHp.times(0.5))) {
+      this.phase = 2;
+      this.enemyPattern = this.phase2.pattern;
+      this.patternTurn = 0;
+      await this.emitEvent('onPhase', { text: this.phase2.text });
+    }
+
+    // Imprevisto di turno (dall'Atto 2): non annunciato dall'avversario
+    this.turnNumber++;
+    const prevEvent = this.turnEvent;
+    this.turnEvent = this.eventAct > 0 ? rollTurnEvent(this.rng, this.eventAct, this.turnNumber, prevEvent?.id ?? null) : null;
+    if (this.turnEvent) {
+      if (this.turnEvent.id === 'pioggia-curativa') {
+        this.player.hp = Decimal.min(this.player.maxHp, this.player.hp.plus(this.player.maxHp.times(0.1)));
+      }
+      await this.emitEvent('onTurnEvent', { event: this.turnEvent });
+    }
+
     // Il nemico dichiara l'intento del turno (deterministico, MVP §2)
     this.currentIntent = this.computeEnemyIntent();
+    if (this.turnEvent?.id === 'furia-nemica' && this.currentIntent.type !== IntentType.BUFF) {
+      this.currentIntent = { ...this.currentIntent, value: this.currentIntent.value.times(1.3) };
+    }
     await this.emitEvent('onEnemyIntent', { intent: this.currentIntent });
 
     await this.rollPhase();
@@ -404,6 +438,7 @@ export class BattleEngine {
     const ov = this.overflowOf(this.selected);
     if (ov.active) dmg = dmg.times(ov.mult);
     if (this.chargedRoll) dmg = dmg.times(BALANCE.CHARGE_BONUS + this.mods.chargeBonus);
+    if (this.turnEvent?.id === 'eco-tuono') dmg = dmg.times(1.5);
     return dmg;
   }
 

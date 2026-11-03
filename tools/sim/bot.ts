@@ -64,7 +64,7 @@ async function fight(
   };
   const eng = new BattleEngine(stats, enemy, bag, seededRNG(seed));
   const prof = enemyProfileFor(run.state.act, run.state.encounter, run.isChampion, run.isActBoss, run.isElite);
-  eng.enemyPattern = prof.pattern; eng.bossRules = prof.rules;
+  eng.enemyPattern = prof.pattern; eng.bossRules = prof.rules; eng.phase2 = prof.phase2 ?? null; eng.eventAct = run.state.act;
   eq.syncPipeline(eng.pipeline, () => eng.itemCtx());
   eng.mods = eq.mods();
   eng.player.hp = eng.player.maxHp.times(hpRatio);

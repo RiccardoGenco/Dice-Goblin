@@ -7,7 +7,7 @@
   import Sprite from './Sprite.svelte';
   import { SPRITES } from './spriteCatalog';
   import {
-    playerView, enemyView, intentView, intentQueue, bossRuleText, settings, enemyInfo, stageFx, battleResult,
+    playerView, enemyView, intentView, intentQueue, bossRuleText, turnEventView, phaseBanner, settings, enemyInfo, stageFx, battleResult,
     overflowActive, actLevel
   } from './stores';
 
@@ -112,6 +112,7 @@
     {#each PARTS as p}<i style="left:{p.x}%; --d:{p.d}s; --t:{p.t}s; --z:{p.z}; --dx:{p.dx}px"></i>{/each}
   </div>
   <div class="vignette"></div>
+  {#if $phaseBanner}<div class="phase-banner" role="status">{$phaseBanner}</div>{/if}
 
   <!-- ===== HUD: ancorati agli angoli alti del palco ===== -->
   <div class="hud player-hud">
@@ -164,6 +165,7 @@
         <span class="chev loop" title="Poi lo schema ricomincia">↺</span>
       </div>
       {#if $bossRuleText}<div class="rule">{$bossRuleText}</div>{/if}
+      {#if $turnEventView}<div class="tevent" class:good={$turnEventView.good}><b>{$turnEventView.icon} {$turnEventView.title}</b> {$turnEventView.text}</div>{/if}
     </div>
   {/if}
 
@@ -290,6 +292,15 @@
   @keyframes float { 0% { opacity: 0; transform: translate(0, 0); } 20% { opacity: 0.9; } 50% { transform: translate(var(--dx), -46px); } 80% { opacity: 0.8; } 100% { opacity: 0; transform: translate(calc(var(--dx) * -0.6), -110px); } }
   @keyframes ember { 0% { opacity: 0; transform: translate(0, 0) scale(1); } 15% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--dx), -320px) scale(0.3); } }
   @keyframes flicker { 0%, 100% { opacity: 0.85; } 40% { opacity: 1; } 55% { opacity: 0.7; } 75% { opacity: 0.95; } }
+
+  .tevent { margin-top: 4px; padding: 3px 12px; border-radius: 10px; font-size: 0.78rem; text-align: center;
+    background: rgba(255, 90, 90, 0.18); border: 1px solid rgba(255, 90, 90, 0.6); animation: tevin 0.4s ease-out; }
+  .tevent.good { background: rgba(110, 220, 130, 0.16); border-color: rgba(110, 220, 130, 0.6); }
+  @keyframes tevin { from { transform: scale(0.85); opacity: 0; } }
+  .phase-banner { position: absolute; z-index: 6; left: 50%; top: 52%; transform: translate(-50%, -50%); padding: 12px 26px;
+    font-size: 1.3rem; text-align: center; color: #fff; background: rgba(120, 10, 30, 0.82); border: 2px solid #ff6a5a; border-radius: 10px;
+    box-shadow: 0 0 40px rgba(255, 60, 40, 0.7); pointer-events: none; animation: phasein 3.2s ease-out forwards; max-width: 80%; }
+  @keyframes phasein { 0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; } 10% { transform: translate(-50%, -50%) scale(1.08); opacity: 1; } 85% { opacity: 1; } 100% { opacity: 0; } }
 
   /* ---- vignetta: boss rosso e pulsante, campione dorato ---- */
   .vignette { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
