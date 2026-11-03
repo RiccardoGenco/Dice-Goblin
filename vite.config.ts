@@ -3,6 +3,8 @@ import { svelte, vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
+  // percorsi relativi: il gioco funziona anche in una sottocartella (GitHub Pages: /Dice-Goblin/)
+  base: './',
   plugins: [svelte({ preprocess: vitePreprocess() })],
   resolve: {
     alias: {
